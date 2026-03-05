@@ -1,30 +1,50 @@
-// // import Image from "next/image";
-// import { fetchItem } from "@/lib/fetch";
+import { createClient } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
 
-// interface Item {
-//   id: number;
-//   name: string;
-// }
+export default async function Home() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
 
-// export default async function Home() {
-//   let Item: Item[] = [];
+  const signIn = async () => {
+    'use server'
+    const supabase = await createClient()
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`,
+      },
+    })
+    
+    if (data.url) {
+      redirect(data.url)
+    }
+  }
 
-//   try{
-//     Item = await fetchItem();
-//   }catch(error){
-//     console.error("Error fetching items:", error);
-//   }
+  const signOut = async () => {
+    'use server'
+    const supabase = await createClient()
+    await supabase.auth.signOut()
+    redirect('/')
+  }
 
-//   return (
-//     <div>
-//       <main>
-//         <h1>Home Page</h1>
-//         <div>
-//         {Item.map((item) => (
-//           <h2 key={item.id}>{item.name}</h2>
-//         ))}
-//         </div>
-//       </main>
-//     </div>
-//   );
-// }
+  return (
+    <div style={{ padding: '20px' }}>
+      <nav style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          {user && <span>Welcome {user.user_metadata?.full_name || user.email}</span>}
+        </div>
+        <div>
+          {user ? (
+            <form action={signOut}>
+              <button type="submit">Log out</button>
+            </form>
+          ) : (
+            <form action={signIn}>
+              <button type="submit">Log in with Google</button>
+            </form>
+          )}
+        </div>
+      </nav>
+    </div>
+  )
+}
