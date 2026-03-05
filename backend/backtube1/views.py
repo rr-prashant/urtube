@@ -1,5 +1,5 @@
 
-from django.contrib.auth.models import User
+from .models import User
 from rest_framework.response import Response
 from rest_framework.decorators import api_view
 from backtube1.serializers import UserSerializer
@@ -11,9 +11,17 @@ def UserView(request):
     serializer = UserSerializer(users, many=True)
     return Response(serializer.data)
 
-
-# @api_view(["GET"])
-# def ItemView(request):
-#     data = Items.objects.all()
-#     serializer = ItemSerializer(data, many=True)
-#     return Response(serializer.data)
+@api_view(["POST"])
+def sync_user(request):
+    data = request.data
+    user, created = User.objects.update_or_create(
+        sub = data['sub'],
+        defaults = {
+            'username': data['email'],
+            'email': data['email'],
+            'first_name': data['full_name'],
+            'picture': data['picture'],
+            'email_verified': data['email_verified'],
+        }
+    )
+    return Response({'id': user.id, 'created': created})
