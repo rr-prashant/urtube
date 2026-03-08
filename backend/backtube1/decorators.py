@@ -7,7 +7,7 @@ from django.conf import settings
 def require_supabase_auth(view_func):
     @wraps(view_func)
     def wrapper(request, *args, **kwargs):
-        # Step 1: Check for Authorization header
+
         auth_header = request.headers.get('Authorization')
         
         if not auth_header or not auth_header.startswith('Bearer '):
@@ -15,17 +15,16 @@ def require_supabase_auth(view_func):
                 {'error': 'Missing or invalid Authorization header'}, 
                 status=401
             )
-        
-        # Step 2: Extract the token
+
         token = auth_header.split(' ')[1]
         
         try:
-            # Step 3: Fetch public key from Supabase JWKS endpoint
-            jwks_url = f"{settings.SUPABASE_URL}/auth/v1/.well-known/jwks.json"
-            jwks_client = PyJWKClient(jwks_url)
-            signing_key = jwks_client.get_signing_key_from_jwt(token)
+         
+            jwks_url = f"{settings.SUPABASE_URL}/auth/v1/.well-known/jwks.json" # getting public key
+            jwks_client = PyJWKClient(jwks_url) # PyJWKClient to fetch/parse the public key to make it usable for jwt.decode
+            signing_key = jwks_client.get_signing_key_from_jwt(token) # get the signing key from the token's header (kid) and the JWKS endpoint
             
-            # Step 4: Verify and decode the token
+            # get the payload from matching the details with the public key
             payload = jwt.decode(
                 token,
                 signing_key.key,
@@ -33,9 +32,10 @@ def require_supabase_auth(view_func):
                 audience='authenticated'
             )
             
-            # Step 5: Attach payload to request for use in view
+            # after successful authentication, user palyload is attached to the request object for use in the view
             request.user_payload = payload
             
+        # checks for exceptions
         except jwt.ExpiredSignatureError:
             return JsonResponse({'error': 'Token expired'}, status=401)
         except jwt.InvalidTokenError as e:
@@ -43,6 +43,8 @@ def require_supabase_auth(view_func):
         except Exception as e:
             return JsonResponse({'error': f'Auth error: {str(e)}'}, status=401)
         
+        # If authentication is successful, proceed to the original view function
         return view_func(request, *args, **kwargs)
     
     return wrapper
+
