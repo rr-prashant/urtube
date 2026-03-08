@@ -13,9 +13,15 @@ export async function GET(request: Request) {
     if (!error) {
       const { data: { user } } = await supabase.auth.getUser();
       if (user){
+        const { data: { session } } = await supabase.auth.getSession()
+        console.log('Token: ', session?.access_token)
+
         await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/sync-user/`,{
           method: 'POST',
-          headers: {'Content-Type': 'application/json'},
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session?.access_token}`
+          },
           body: JSON.stringify({
             sub: user.user_metadata.sub,
             email: user.email,

@@ -3,6 +3,8 @@ from .models import User
 from rest_framework.response import Response
 from rest_framework.decorators import api_view
 from backtube1.serializers import UserSerializer
+from backtube1.decorators import require_supabase_auth
+
 
 # Create your views here.
 @api_view(["GET"])
@@ -12,6 +14,7 @@ def UserView(request):
     return Response(serializer.data)
 
 @api_view(["POST"])
+@require_supabase_auth
 def sync_user(request):
     data = request.data
     user, created = User.objects.update_or_create(

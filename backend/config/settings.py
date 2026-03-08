@@ -36,6 +36,10 @@ INSTALLED_APPS = [
 ]
 
 AUTH_USER_MODEL = 'backtube1.User'
+SUPABASE_URL = os.getenv('SUPABASE_URL')
+SUPABASE_PUBLISHABLE_KEY = os.getenv('SUPABASE_PUBLISHABLE_KEY')
+
+
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
