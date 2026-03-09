@@ -35,10 +35,15 @@ INSTALLED_APPS = [
 
 ]
 
+# Custom user model
 AUTH_USER_MODEL = 'backtube1.User'
+
+# supabase settings
 SUPABASE_URL = os.getenv('SUPABASE_URL')
 SUPABASE_PUBLISHABLE_KEY = os.getenv('SUPABASE_PUBLISHABLE_KEY')
 
+# Youtube API key
+YOUTUBE_API_KEY = os.getenv('YOUTUBE_API_KEY')
 
 
 MIDDLEWARE = [

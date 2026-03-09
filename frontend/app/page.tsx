@@ -12,6 +12,7 @@ export default async function Home() {
       provider: 'google',
       options: {
         redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`,
+        scopes:'https://www.googleapis.com/auth/youtube.readonly',
       },
     })
     

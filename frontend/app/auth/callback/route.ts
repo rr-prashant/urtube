@@ -14,13 +14,18 @@ export async function GET(request: Request) {
       const { data: { user } } = await supabase.auth.getUser();
       if (user){
         const { data: { session } } = await supabase.auth.getSession()
-        console.log('Token: ', session?.access_token)
+        
+        // supabase JWT for django auth
+        const supabaseToken = session?.access_token
+
+        // google access token for YT API
+        const googleAccessToken = session?.provider_token
 
         await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/sync-user/`,{
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session?.access_token}`
+            'Authorization': `Bearer ${supabaseToken}`
           },
           body: JSON.stringify({
             sub: user.user_metadata.sub,
@@ -28,6 +33,7 @@ export async function GET(request: Request) {
             full_name: user.user_metadata.full_name,
             picture: user.user_metadata.picture,
             email_verified: user.user_metadata.email_verified,
+            google_access_token: googleAccessToken,
         })
       } )
       }
