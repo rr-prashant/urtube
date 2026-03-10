@@ -12,7 +12,7 @@ export async function GET(request: Request) {
     
     if (!error) {
       const { data: { user } } = await supabase.auth.getUser();
-      if (user){
+      if (user) {
         const { data: { session } } = await supabase.auth.getSession()
         
         // supabase JWT for django auth
@@ -21,7 +21,8 @@ export async function GET(request: Request) {
         // google access token for YT API
         const googleAccessToken = session?.provider_token
 
-        await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/sync-user/`,{
+        // Sync user first
+        const syncResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/sync-user/`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -34,8 +35,20 @@ export async function GET(request: Request) {
             picture: user.user_metadata.picture,
             email_verified: user.user_metadata.email_verified,
             google_access_token: googleAccessToken,
+          })
         })
-      } )
+
+        const syncData = await syncResponse.json()
+
+        // Auto-fetch videos only if not analyzed before
+        if (!syncData.is_analyzed) {
+          await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/fetch-videos/`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${supabaseToken}`
+            }
+          })
+        }
       }
       
       return NextResponse.redirect(`${origin}${next}`)

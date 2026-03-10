@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import Link from 'next/link'
 
 export default async function Home() {
   const supabase = await createClient()
@@ -36,9 +37,14 @@ export default async function Home() {
         </div>
         <div>
           {user ? (
+            <>
+             <Link href="/dashboard">
+                <button type="button">Dashboard</button>
+              </Link>
             <form action={signOut}>
               <button type="submit">Log out</button>
             </form>
+            </>
           ) : (
             <form action={signIn}>
               <button type="submit">Log in with Google</button>

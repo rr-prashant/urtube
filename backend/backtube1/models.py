@@ -14,6 +14,7 @@ class User(AbstractUser):
     total_subscribers = models.IntegerField(default=0)
     total_views = models.IntegerField(default=0)
     total_videos = models.IntegerField(default=0)
+    is_analyzed = models.BooleanField(default=False)
     
 class Video(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='videos')

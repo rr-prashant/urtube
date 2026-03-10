@@ -28,7 +28,7 @@ def sync_user(request):
             'access_token': data.get('google_access_token', ''),
         }
     )
-    return Response({'id': user.id, 'created': created})
+    return Response({'id': user.id, 'created': created, 'is_analyzed': user.is_analyzed})
 
 
 @api_view(['POST'])
@@ -64,6 +64,9 @@ def fetch_videos(request):
             }
         )
     
+    user.is_analyzed = True
+    user.save()
+
     # Delete older videos beyond 30
     user_videos = Video.objects.filter(user=user).order_by('-published_at')
     if user_videos.count() > 30:
@@ -74,3 +77,36 @@ def fetch_videos(request):
         'message': f'Synced {len(videos_data)} videos',
         'count': len(videos_data)
     })
+
+@api_view(['GET'])
+@require_supabase_auth
+def get_videos(request):
+    try:
+        user = User.objects.get(email=request.user_payload['email'])
+    except User.DoesNotExist:
+        return Response({'error': 'User not found'}, status=404)
+    
+    videos = Video.objects.filter(user=user).order_by('-published_at')
+    videos_data = []
+    for video in videos:
+        videos_data.append({
+            'youtube_video_id': video.youtube_video_id,
+            'title': video.title,
+            'description': video.description,
+            'thumbnail_url': video.thumbnail_url,
+            'published_at': video.published_at,
+            'views': video.views,
+            'likes': video.likes,
+            'comments_count': video.comments_count,
+        })
+    
+    return Response({
+        'user': {
+            'email': user.email,
+            'name': user.first_name,
+            'picture': user.picture,
+            'is_analyzed': user.is_analyzed,
+        },
+        'videos': videos_data,
+        'count': len(videos_data),
+        })
