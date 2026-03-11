@@ -14,8 +14,8 @@ A full-stack YouTube analytics tool that helps creators understand what content 
 6. [Database Schema](#database-schema)
 7. [API Endpoints](#api-endpoints)
 8. [Authentication](#authentication)
-9. [Project Structure](#project-structure)
-10. [Diagrams](#diagrams)
+9. [YouTube Integration](#youtube-integration)
+10. [Project Structure](#project-structure)
 
 ---
 
@@ -42,15 +42,21 @@ The platform uses sentiment analysis, embeddings, and clustering to provide acti
 - Automatic profile updates on each login
 
 ### YouTube Integration
-- *Coming soon*
+- Fetch user's latest 30 videos on first login
+- Store video metadata (title, views, likes, comments count)
+- Re-analyze button for manual refresh
+- Automatic cleanup of videos beyond 30
+
+### Creator Dashboard
+- Display user profile info
+- List all fetched videos with thumbnails
+- View counts, likes, and comments for each video
+- Re-analyze channel button
 
 ### Sentiment Analysis
 - *Coming soon*
 
 ### Video Clustering
-- *Coming soon*
-
-### Creator Dashboard
 - *Coming soon*
 
 ### Public Research Mode
@@ -66,6 +72,7 @@ The platform uses sentiment analysis, embeddings, and clustering to provide acti
 | **Backend** | Django 6, Django REST Framework |
 | **Database** | Supabase (PostgreSQL) |
 | **Authentication** | Supabase Auth (Google OAuth) |
+| **YouTube API** | YouTube Data API v3 |
 | **AI/ML** | OpenAI API, VADER Sentiment, scikit-learn |
 | **Deployment** | Vercel (frontend), Railway (backend) |
 
@@ -73,43 +80,7 @@ The platform uses sentiment analysis, embeddings, and clustering to provide acti
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         FRONTEND                                 │
-│                      (Next.js + TypeScript)                      │
-│                                                                  │
-│  ┌──────────┐    ┌──────────────┐    ┌───────────────────┐      │
-│  │  Pages   │    │  Components  │    │  Supabase Client  │      │
-│  │          │    │              │    │  (Browser Auth)   │      │
-│  └──────────┘    └──────────────┘    └─────────┬─────────┘      │
-└─────────────────────────────────────────────────┼────────────────┘
-                                                  │
-                    ┌─────────────────────────────┼─────────────────┐
-                    │                             │                 │
-                    ▼                             ▼                 │
-┌─────────────────────────────┐    ┌─────────────────────────────┐ │
-│       SUPABASE AUTH         │    │         DJANGO API          │ │
-│                             │    │                             │ │
-│  ┌───────────────────────┐  │    │  ┌───────────────────────┐  │ │
-│  │   Google OAuth        │  │    │  │   JWT Verification    │  │ │
-│  │   Session Management  │  │    │  │   (ES256 via JWKS)    │  │ │
-│  │   JWT Token Issuing   │──┼────┼──▶   User Sync          │  │ │
-│  └───────────────────────┘  │    │  │   API Endpoints       │  │ │
-│                             │    │  └───────────────────────┘  │ │
-│  ┌───────────────────────┐  │    │                             │ │
-│  │   auth.users table    │  │    │  ┌───────────────────────┐  │ │
-│  │   (auto-managed)      │  │    │  │   Custom User Model   │  │ │
-│  └───────────────────────┘  │    │  │   Videos, Comments    │  │ │
-└─────────────────────────────┘    │  └───────────────────────┘  │ │
-                                   │              │               │ │
-                                   └──────────────┼───────────────┘ │
-                                                  │                 │
-                                   ┌──────────────▼───────────────┐ │
-                                   │    SUPABASE PostgreSQL       │ │
-                                   │    (Django Tables)           │ │
-                                   └──────────────────────────────┘ │
-└───────────────────────────────────────────────────────────────────┘
-```
+![Architecture Flow](./docs/auth.png)
 
 ---
 
@@ -121,6 +92,7 @@ The platform uses sentiment analysis, embeddings, and clustering to provide acti
 - Node.js 18+
 - Supabase account with project created
 - Google Cloud Console project with OAuth credentials
+- YouTube Data API v3 enabled
 
 ### Backend Setup (Django)
 
@@ -180,6 +152,9 @@ SUPABASE_PUBLISHABLE_KEY=your-publishable-key
 # Django
 SECRET_KEY=your-django-secret-key
 DEBUG=True
+
+# YouTube
+YOUTUBE_API_KEY=your-youtube-api-key
 ```
 
 #### Frontend (.env.local)
@@ -200,6 +175,9 @@ NEXT_PUBLIC_SITE_URL=http://localhost:3000
 
 ## Database Schema
 
+### Data Models
+![Database Schema](./docs/database-schema.png)
+
 ### User Model
 
 ```python
@@ -213,6 +191,45 @@ class User(AbstractUser):
     youtube_channel_id = models.CharField(max_length=100, null=True, blank=True)
     access_token = models.TextField(null=True, blank=True)
     refresh_token = models.TextField(null=True, blank=True)
+    
+    # Analysis tracking
+    is_analyzed = models.BooleanField(default=False)
+    
+    # Channel stats
+    total_subscribers = models.IntegerField(default=0)
+    total_views = models.IntegerField(default=0)
+    total_videos = models.IntegerField(default=0)
+```
+
+### Video Model
+
+```python
+class Video(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='videos')
+    youtube_video_id = models.CharField(max_length=50, unique=True)
+    title = models.TextField()
+    description = models.TextField(null=True, blank=True)
+    thumbnail_url = models.URLField(null=True, blank=True)
+    views = models.IntegerField(default=0)
+    likes = models.IntegerField(default=0)
+    comments_count = models.IntegerField(default=0)
+    published_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-published_at']
+```
+
+### Comment Model (Coming Soon)
+
+```python
+class Comment(models.Model):
+    video = models.ForeignKey(Video, on_delete=models.CASCADE, related_name='comments')
+    text = models.TextField()
+    sentiment_score = models.FloatField()
+    sentiment_label = models.CharField(max_length=20)
+    created_at = models.DateTimeField(auto_now_add=True)
 ```
 
 ### Field Mapping (Google → Django)
@@ -225,12 +242,7 @@ class User(AbstractUser):
 | `email_verified` | `user.user_metadata.email_verified` |
 | `picture` | `user.user_metadata.picture` |
 | `username` | `user.email` |
-
-### Video Model
-*Coming soon*
-
-### Comment Model
-*Coming soon*
+| `access_token` | `session.provider_token` |
 
 ---
 
@@ -242,8 +254,12 @@ class User(AbstractUser):
 |--------|----------|------|-------------|
 | POST | `/api/sync-user/` | JWT | Create or update user from Supabase auth |
 
-### YouTube Endpoints
-*Coming soon*
+### Video Endpoints
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| POST | `/api/fetch-videos/` | JWT | Fetch and store user's 30 latest YouTube videos |
+| GET | `/api/get-videos/` | JWT | Get user's stored videos and profile |
 
 ### Analytics Endpoints
 *Coming soon*
@@ -254,46 +270,14 @@ class User(AbstractUser):
 
 ### Authentication Flow
 
-```
-┌────────┐     ┌─────────┐     ┌──────────┐     ┌────────┐     ┌────────┐
-│  User  │     │ Next.js │     │ Supabase │     │ Google │     │ Django │
-└───┬────┘     └────┬────┘     └────┬─────┘     └───┬────┘     └───┬────┘
-    │               │               │               │               │
-    │ Click Login   │               │               │               │
-    │──────────────▶│               │               │               │
-    │               │ signInWithOAuth               │               │
-    │               │──────────────▶│               │               │
-    │               │               │ Redirect      │               │
-    │◀──────────────┼───────────────┼──────────────▶│               │
-    │               │               │               │               │
-    │ Login to Google               │               │               │
-    │──────────────────────────────────────────────▶│               │
-    │               │               │               │               │
-    │               │               │◀──────────────│               │
-    │               │               │ Auth Code     │               │
-    │◀──────────────┼───────────────│               │               │
-    │ Redirect to /auth/callback    │               │               │
-    │               │               │               │               │
-    │               │ exchangeCodeForSession        │               │
-    │               │──────────────▶│               │               │
-    │               │◀──────────────│               │               │
-    │               │ JWT Token + User Data         │               │
-    │               │               │               │               │
-    │               │ POST /api/sync-user/ + JWT    │               │
-    │               │──────────────────────────────────────────────▶│
-    │               │               │               │               │
-    │               │               │               │    Verify JWT │
-    │               │               │◀─────────────────────────────┤│
-    │               │               │ Fetch JWKS    │               │
-    │               │               │──────────────▶│               │
-    │               │               │               │               │
-    │               │               │               │ Create/Update │
-    │               │               │               │     User      │
-    │               │◀──────────────────────────────────────────────│
-    │               │ Success       │               │               │
-    │◀──────────────│               │               │               │
-    │ Redirect Home │               │               │               │
-```
+![Google Auth Flow](./docs/google-auth-seq.jpg)
+
+### YouTube OAuth Scope
+
+The app requests `youtube.readonly` scope to access user's YouTube channel data. Two tokens are captured:
+
+- **Supabase JWT** (`session.access_token`) - Used for Django API authentication
+- **Google Access Token** (`session.provider_token`) - Used for YouTube API calls, stored in User model
 
 ### OAuth Initiation (Frontend)
 
@@ -302,6 +286,7 @@ const { data, error } = await supabase.auth.signInWithOAuth({
   provider: 'google',
   options: {
     redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`,
+    scopes: 'https://www.googleapis.com/auth/youtube.readonly',
   },
 })
 ```
@@ -322,12 +307,18 @@ export async function GET(request: Request) {
       const { data: { user } } = await supabase.auth.getUser()
       const { data: { session } } = await supabase.auth.getSession()
       
-      // Sync user to Django with JWT
-      await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/sync-user/`, {
+      // Supabase JWT for Django auth
+      const supabaseToken = session?.access_token
+      
+      // Google access token for YouTube API
+      const googleAccessToken = session?.provider_token
+      
+      // Sync user to Django
+      const syncResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/sync-user/`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session?.access_token}`
+          'Authorization': `Bearer ${supabaseToken}`
         },
         body: JSON.stringify({
           sub: user.user_metadata.sub,
@@ -335,14 +326,27 @@ export async function GET(request: Request) {
           full_name: user.user_metadata.full_name,
           picture: user.user_metadata.picture,
           email_verified: user.user_metadata.email_verified,
+          google_access_token: googleAccessToken,
         })
       })
+      
+      const syncData = await syncResponse.json()
+      
+      // Auto-fetch videos only on first login
+      if (!syncData.is_analyzed) {
+        await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/fetch-videos/`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${supabaseToken}`
+          }
+        })
+      }
       
       return NextResponse.redirect(`${origin}/`)
     }
   }
   
-  return NextResponse.redirect(`${origin}/auth/auth-code-error`)
+  return NextResponse.redirect(`${origin}/`)
 }
 ```
 
@@ -368,6 +372,9 @@ Payload: { "sub": "114086...", "email": "user@gmail.com", "aud": "authenticated"
 4. Verify signature using public key
 5. Check expiration and audience claims
 6. Return payload if valid
+
+### JWT Flow Diagram
+![JWT Flow](./docs/JWT-auth.png)
 
 #### JWT Decorator (Backend)
 
@@ -425,12 +432,135 @@ def sync_user(request):
         defaults={
             'username': data['email'],
             'email': data['email'],
-            'first_name': data['full_name'],
-            'picture': data['picture'],
-            'email_verified': data['email_verified'],
+            'first_name': data.get('full_name', ''),
+            'picture': data.get('picture', ''),
+            'email_verified': data.get('email_verified', False),
+            'access_token': data.get('google_access_token', ''),
         }
     )
-    return Response({'id': user.id, 'created': created})
+    return Response({
+        'id': user.id,
+        'created': created,
+        'is_analyzed': user.is_analyzed
+    })
+```
+
+---
+
+## YouTube Integration
+
+### Flow
+
+1. User logs in with Google (YouTube scope requested)
+2. Google access token saved to User model
+3. On first login (`is_analyzed=False`), `/api/fetch-videos/` auto-fetches 30 videos
+4. Videos stored in database, older than 30 deleted
+5. `is_analyzed` set to `True` after first fetch
+6. Re-analyze button triggers manual refresh (bypasses `is_analyzed` check)
+
+### YouTube API Endpoints Used
+
+| Endpoint | Purpose | Quota Cost |
+|----------|---------|------------|
+| `channels().list(mine=True)` | Get user's channel ID | 1 unit |
+| `playlistItems().list()` | Get video IDs from uploads playlist | 1 unit |
+| `videos().list()` | Get video details (title, stats) | 1 unit |
+
+**Total per fetch:** ~2-3 units (10,000 daily limit)
+
+### YouTube Service (Backend)
+
+```python
+# backtube1/services.py
+from googleapiclient.discovery import build
+from google.oauth2.credentials import Credentials
+
+def get_youtube_service(access_token=None):
+    """Create YouTube API client"""
+    if access_token:
+        # For authenticated requests (user's own data)
+        credentials = Credentials(token=access_token)
+        return build('youtube', 'v3', credentials=credentials)
+    else:
+        # For public data (API key only)
+        return build('youtube', 'v3', developerKey=settings.YOUTUBE_API_KEY)
+
+def get_channel_id(youtube):
+    """Get the authenticated user's YouTube channel ID"""
+    request = youtube.channels().list(part='id', mine=True)
+    response = request.execute()
+    
+    if 'items' in response and len(response['items']) > 0:
+        return response['items'][0]['id']
+    return None
+
+def get_uploads_playlist_id(channel_id):
+    """Convert channel ID to uploads playlist ID (UC... → UU...)"""
+    if channel_id.startswith('UC'):
+        return 'UU' + channel_id[2:]
+    return None
+
+def get_channel_videos(access_token, max_results=30):
+    """Fetch user's latest videos from their uploads playlist"""
+    youtube = get_youtube_service(access_token)
+    
+    channel_id = get_channel_id(youtube)
+    playlist_id = get_uploads_playlist_id(channel_id)
+    
+    # Get video IDs from playlist
+    request = youtube.playlistItems().list(
+        part='contentDetails',
+        playlistId=playlist_id,
+        maxResults=max_results
+    )
+    response = request.execute()
+    video_ids = [item['contentDetails']['videoId'] for item in response['items']]
+    
+    # Get video details
+    request = youtube.videos().list(
+        part='snippet,statistics',
+        id=','.join(video_ids)
+    )
+    response = request.execute()
+    
+    # Return formatted video data
+    return [{
+        'youtube_video_id': item['id'],
+        'title': item['snippet']['title'],
+        'views': int(item['statistics'].get('viewCount', 0)),
+        # ... other fields
+    } for item in response['items']]
+```
+
+### Fetch Videos View (Backend)
+
+```python
+@api_view(['POST'])
+@require_supabase_auth
+def fetch_videos(request):
+    user = User.objects.get(email=request.user_payload['email'])
+    
+    # Fetch from YouTube API
+    videos_data = get_channel_videos(user.access_token, max_results=30)
+    
+    # Save to database
+    for video_data in videos_data:
+        Video.objects.update_or_create(
+            youtube_video_id=video_data['youtube_video_id'],
+            defaults={'user': user, **video_data}
+        )
+    
+    # Keep only 30 videos
+    user_videos = Video.objects.filter(user=user).order_by('-published_at')
+    if user_videos.count() > 30:
+        old_ids = list(user_videos[30:].values_list('id', flat=True))
+        Video.objects.filter(id__in=old_ids).delete()
+    
+    # Mark as analyzed
+    user.is_analyzed = True
+    user.save()
+    
+    return Response({'message': f'Synced {len(videos_data)} videos'})
 ```
 
 ---
@@ -444,10 +574,10 @@ urtube/
 │   │   ├── settings.py
 │   │   ├── urls.py
 │   │   └── wsgi.py
-│   ├── backtube1/           # django app
-
-│   │   ├── models.py        # User model
+│   ├── backtube1/
+│   │   ├── models.py        # User, Video models
 │   │   ├── views.py         # API views
+│   │   ├── services.py      # YouTube API integration
 │   │   ├── serializers.py   # DRF serializers
 │   │   ├── decorators.py    # JWT auth decorator
 │   │   └── urls.py
@@ -457,18 +587,29 @@ urtube/
 │
 ├── frontend/
 │   ├── app/
-│   │   ├── page.tsx
+│   │   ├── page.tsx         # Home page
+│   │   ├── dashboard/
+│   │   │   └── page.tsx     # User dashboard with video list
 │   │   └── auth/
-│   │       └── callback/
-│   │           └── route.ts
+│   │       ├── callback/
+│   │       │   └── route.ts # OAuth callback handler
+│   │       └── auth-code-error/
+│   │           └── page.tsx # Auth error page
 │   ├── lib/
 │   │   └── supabase/
 │   │       ├── client.ts
 │   │       ├── server.ts
 │   │       └── proxy.ts
 │   ├── proxy.ts
+│   ├── next.config.js
 │   ├── package.json
 │   └── .env.local
+│
+├── docs/
+│   ├── auth.png
+│   ├── database-schema.png
+│   ├── google-auth-seq.jpg
+│   └── JWT-auth.png
 │
 └── README.md
 ```
