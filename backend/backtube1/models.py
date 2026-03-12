@@ -34,3 +34,25 @@ class Video(models.Model):
 
     def __str__(self):
         return self.title
+
+
+class AnalysisSnapshot(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='snapshots')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    video_count = models.IntegerField(default=0)
+    total_comments = models.IntegerField(default=0)
+    avg_sentiment = models.FloatField(default=0.0)
+    positive_percent = models.FloatField(default=0.0)
+    neutral_percent = models.FloatField(default=0.0)
+    negative_percent = models.FloatField(default=0.0)
+    
+    # Top performing video at time of snapshot
+    top_video_id = models.CharField(max_length=50, null=True, blank=True)
+    top_video_title = models.TextField(null=True, blank=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"Snapshot for {self.user.email} at {self.created_at}"

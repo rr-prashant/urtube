@@ -82,4 +82,4 @@ def get_channel_videos(access_token, max_results=30):
             'comments_count': int(item['statistics'].get('commentCount', 0)),
         })
     
-    return videos
+    return channel_id, videos

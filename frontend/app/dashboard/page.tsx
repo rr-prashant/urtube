@@ -16,7 +16,7 @@ interface Video {
 
 interface UserData {
   email: string
-  name: string
+  first_name: string
   picture: string
   is_analyzed: boolean
 }
@@ -94,7 +94,7 @@ export default function Dashboard() {
       
       <div>
         <h2>User Info</h2>
-        <p>Name: {user?.name}</p>
+        <p>Name: {user?.first_name}</p>
         <p>Email: {user?.email}</p>
         <p>Picture URL: {user?.picture}</p>
         {user?.picture && <img src={user.picture} alt="Profile" width={100} />}
