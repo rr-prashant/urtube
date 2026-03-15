@@ -28,7 +28,7 @@ export default function Dashboard() {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    async function fetchVideos() {
+    async function initDashboard() {
       const supabase = createClient()
       
       const { data: { session } } = await supabase.auth.getSession()
@@ -39,6 +39,38 @@ export default function Dashboard() {
         return
       }
 
+      const { data: { user: authUser } } = await supabase.auth.getUser()
+
+      // Sync user first
+      const syncResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/sync-user/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({
+          sub: authUser?.user_metadata.sub,
+          email: authUser?.email,
+          full_name: authUser?.user_metadata.full_name,
+          picture: authUser?.user_metadata.picture,
+          email_verified: authUser?.user_metadata.email_verified,
+          google_access_token: session.provider_token,
+        })
+      })
+
+      const syncData = await syncResponse.json()
+
+      // Fetch videos if not analyzed
+      if (!syncData.is_analyzed) {
+        await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/fetch-videos/`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`
+          }
+        })
+      }
+
+      // Get videos
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/get-videos/`, {
         headers: {
           'Authorization': `Bearer ${session.access_token}`
@@ -57,12 +89,12 @@ export default function Dashboard() {
       setLoading(false)
     }
 
-    fetchVideos()
+    initDashboard()
   }, [])
 
   async function handleReanalyze() {
     setLoading(true)
-    const supabase = createClient() 
+    const supabase = createClient()
     
     const { data: { session } } = await supabase.auth.getSession()
     
@@ -73,7 +105,6 @@ export default function Dashboard() {
       }
     })
 
-    
     const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/get-videos/`, {
       headers: {
         'Authorization': `Bearer ${session?.access_token}`
@@ -96,7 +127,6 @@ export default function Dashboard() {
         <h2>User Info</h2>
         <p>Name: {user?.first_name}</p>
         <p>Email: {user?.email}</p>
-        <p>Picture URL: {user?.picture}</p>
         {user?.picture && <img src={user.picture} alt="Profile" width={100} />}
       </div>
 

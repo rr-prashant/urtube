@@ -1,33 +1,62 @@
-import { createClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
+'use client'
+
+import { useEffect, useState } from 'react'
+import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
+import { useRouter, useSearchParams } from 'next/navigation'
 
-export default async function Home() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+export default function Home() {
+  const [user, setUser] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+  const router = useRouter()
+  const searchParams = useSearchParams()
 
-  const signIn = async () => {
-    'use server'
-    const supabase = await createClient()
-    const { data, error } = await supabase.auth.signInWithOAuth({
+  useEffect(() => {
+    // Clear error params from URL if present
+    const error = searchParams.get('error')
+    if (error) {
+      router.replace('/', { scroll: false })
+    }
+
+    async function getUser() {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      setUser(user)
+      setLoading(false)
+    }
+    getUser()
+  }, [searchParams, router])
+
+  async function signIn() {
+    const supabase = createClient()
+    await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`,
-        scopes:'https://www.googleapis.com/auth/youtube.readonly',
+        redirectTo: `${window.location.origin}/auth/callback`,
+        scopes: 'https://www.googleapis.com/auth/youtube.readonly',
+        queryParams: {
+          prompt: 'select_account',
+        },
       },
     })
-    
-    if (data.url) {
-      redirect(data.url)
-    }
   }
 
-  const signOut = async () => {
-    'use server'
-    const supabase = await createClient()
+  async function signOut() {
+    const supabase = createClient()
     await supabase.auth.signOut()
-    redirect('/')
+
+    // Clear all Supabase cookies
+    document.cookie.split(';').forEach(cookie => {
+      const name = cookie.split('=')[0].trim()
+      if (name.startsWith('sb-')) {
+        document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`
+      }
+    })
+    setUser(null)
+    router.refresh()
   }
+
+  if (loading) return <p>Loading...</p>
 
   return (
     <div style={{ padding: '20px' }}>
@@ -35,20 +64,16 @@ export default async function Home() {
         <div>
           {user && <span>Welcome {user.user_metadata?.full_name || user.email}</span>}
         </div>
-        <div>
+        <div style={{ display: 'flex', gap: '10px' }}>
           {user ? (
             <>
-             <Link href="/dashboard">
+              <Link href="/dashboard">
                 <button type="button">Dashboard</button>
               </Link>
-            <form action={signOut}>
-              <button type="submit">Log out</button>
-            </form>
+              <button onClick={signOut}>Log out</button>
             </>
           ) : (
-            <form action={signIn}>
-              <button type="submit">Log in with Google</button>
-            </form>
+            <button onClick={signIn}>Log in with Google</button>
           )}
         </div>
       </nav>
