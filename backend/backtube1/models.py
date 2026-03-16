@@ -56,3 +56,16 @@ class AnalysisSnapshot(models.Model):
     
     def __str__(self):
         return f"Snapshot for {self.user.email} at {self.created_at}"
+    
+class Comments(models.Model):
+    video = models.ForeignKey(Video, on_delete=models.CASCADE, related_name='comments')
+    youtube_comment_id = models.CharField(max_length=100, unique=True)
+    text = models.TextField()
+    author = models.CharField(max_length=255)
+    published_at = models.DateTimeField()
+    sentiment_score = models.FloatField(null=True, blank=True)
+    sentiment_label = models.CharField(max_length=20, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.author}: {self.text[:50]}"
