@@ -220,8 +220,32 @@ class Video(models.Model):
     class Meta:
         ordering = ['-published_at']
 ```
+### Analysis Snapshot Model
 
-### Comment Model (Coming Soon)
+```python
+class AnalysisSnapshot(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='snapshots')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    video_count = models.IntegerField(default=0)
+    total_comments = models.IntegerField(default=0)
+    avg_sentiment = models.FloatField(default=0.0)
+    positive_percent = models.FloatField(default=0.0)
+    neutral_percent = models.FloatField(default=0.0)
+    negative_percent = models.FloatField(default=0.0)
+    
+    # Top performing video at time of snapshot
+    top_video_id = models.CharField(max_length=50, null=True, blank=True)
+    top_video_title = models.TextField(null=True, blank=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"Snapshot for {self.user.email} at {self.created_at}"
+```
+
+### Comment Model
 
 ```python
 class Comment(models.Model):
@@ -282,13 +306,16 @@ The app requests `youtube.readonly` scope to access user's YouTube channel data.
 ### OAuth Initiation (Frontend)
 
 ```typescript
-const { data, error } = await supabase.auth.signInWithOAuth({
-  provider: 'google',
-  options: {
-    redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`,
-    scopes: 'https://www.googleapis.com/auth/youtube.readonly',
-  },
-})
+await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback`,
+        scopes: 'https://www.googleapis.com/auth/youtube.readonly',
+        queryParams: {
+          prompt: 'select_account',
+        },
+      },
+    })
 ```
 
 ### OAuth Callback (Frontend)
@@ -298,55 +325,32 @@ const { data, error } = await supabase.auth.signInWithOAuth({
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url)
   const code = searchParams.get('code')
+  const next = searchParams.get('next') ?? '/'
 
   if (code) {
-    const supabase = await createClient()
-    const { error } = await supabase.auth.exchangeCodeForSession(code)
+    const cookieStore = await cookies()
     
-    if (!error) {
-      const { data: { user } } = await supabase.auth.getUser()
-      const { data: { session } } = await supabase.auth.getSession()
-      
-      // Supabase JWT for Django auth
-      const supabaseToken = session?.access_token
-      
-      // Google access token for YouTube API
-      const googleAccessToken = session?.provider_token
-      
-      // Sync user to Django
-      const syncResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/sync-user/`, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabaseToken}`
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY!,
+      {
+        cookies: {
+          getAll() {
+            return cookieStore.getAll()
+          },
+          setAll(cookiesToSet) {
+            cookiesToSet.forEach(({ name, value, options }) => {
+              cookieStore.set(name, value, options)
+            })
+          },
         },
-        body: JSON.stringify({
-          sub: user.user_metadata.sub,
-          email: user.email,
-          full_name: user.user_metadata.full_name,
-          picture: user.user_metadata.picture,
-          email_verified: user.user_metadata.email_verified,
-          google_access_token: googleAccessToken,
-        })
-      })
-      
-      const syncData = await syncResponse.json()
-      
-      // Auto-fetch videos only on first login
-      if (!syncData.is_analyzed) {
-        await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/fetch-videos/`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${supabaseToken}`
-          }
-        })
       }
-      
-      return NextResponse.redirect(`${origin}/`)
-    }
+    )
+
+    await supabase.auth.exchangeCodeForSession(code)
   }
-  
-  return NextResponse.redirect(`${origin}/`)
+
+  return NextResponse.redirect(`${origin}${next}`)
 }
 ```
 
@@ -538,29 +542,70 @@ def get_channel_videos(access_token, max_results=30):
 @api_view(['POST'])
 @require_supabase_auth
 def fetch_videos(request):
-    user = User.objects.get(email=request.user_payload['email'])
+    try:
+        user = User.objects.get(email=request.user_payload['email'])
+    except User.DoesNotExist:
+        return Response({'error': 'User not found'}, status=404)
     
-    # Fetch from YouTube API
-    videos_data = get_channel_videos(user.access_token, max_results=30)
+    if not user.access_token:
+        return Response({'error': 'No YouTube access token. Please re-login.'}, status=400)
     
-    # Save to database
+    # Fetch videos from YouTube: user.access_token = token to access the YT account
+    channel_id, videos_data = get_channel_videos(user.access_token, max_results=30)
+    
+    if not videos_data:
+        return Response({'error': 'No videos found or invalid token'}, status=404)
+    
+    # Save videos to database : using update_or_create to avoid duplicates and keep data updated
     for video_data in videos_data:
         Video.objects.update_or_create(
             youtube_video_id=video_data['youtube_video_id'],
-            defaults={'user': user, **video_data}
+            defaults={
+                'user': user,
+                'title': video_data['title'],
+                'description': video_data['description'],
+                'thumbnail_url': video_data['thumbnail_url'],
+                'published_at': video_data['published_at'],
+                'views': video_data['views'],
+                'likes': video_data['likes'],
+                'comments_count': video_data['comments_count'],
+            }
         )
-    
-    # Keep only 30 videos
+
+    # Delete older videos beyond 30
     user_videos = Video.objects.filter(user=user).order_by('-published_at')
     if user_videos.count() > 30:
         old_ids = list(user_videos[30:].values_list('id', flat=True))
         Video.objects.filter(id__in=old_ids).delete()
-    
-    # Mark as analyzed
+
+    user.youtube_channel_id = channel_id
     user.is_analyzed = True
     user.save()
+
     
-    return Response({'message': f'Synced {len(videos_data)} videos'})
+    return Response({
+        'message': f'Synced {len(videos_data)} videos',
+    })
+```
+
+### Get Videos View (Backend)
+
+```python
+@api_view(['GET'])
+@require_supabase_auth
+def get_videos(request):
+    try:
+        user = User.objects.get(email=request.user_payload['email'])
+    except User.DoesNotExist:
+        return Response({'error': 'User not found'}, status=404)
+    
+    videos = Video.objects.filter(user=user).order_by('-published_at')
+    
+    return Response({
+        'user': UserSerializer(user).data,
+        'videos': VideoSerializer(videos, many=True).data,
+        'count': videos.count(),
+    })
 ```
 
 ---
