@@ -44,8 +44,9 @@ The platform uses sentiment analysis, embeddings, and clustering to provide acti
 ### YouTube Integration
 - Fetch user's latest 30 videos on first login
 - Store video metadata (title, views, likes, comments count)
+- Fetch top 100 top-level comments per video (ordered by relevance)
 - Re-analyze button for manual refresh
-- Automatic cleanup of videos beyond 30
+- Old videos and comments deleted and replaced on each re-fetch
 
 ### Creator Dashboard
 - Display user profile info
@@ -54,7 +55,11 @@ The platform uses sentiment analysis, embeddings, and clustering to provide acti
 - Re-analyze channel button
 
 ### Sentiment Analysis
-- *Coming soon*
+- VADER sentiment analysis on top-level YouTube comments
+- Per-comment scoring (compound score: -1 to +1) and labeling (positive/neutral/negative)
+- Thresholds: ≥ 0.05 = positive, ≤ -0.05 = negative, between = neutral
+- Analysis runs automatically during comment fetch
+- Snapshot saved before each reanalysis for before/after comparison
 
 ### Video Clustering
 - *Coming soon*
@@ -250,9 +255,12 @@ class AnalysisSnapshot(models.Model):
 ```python
 class Comment(models.Model):
     video = models.ForeignKey(Video, on_delete=models.CASCADE, related_name='comments')
+    youtube_comment_id = models.CharField(max_length=100, unique=True)
     text = models.TextField()
-    sentiment_score = models.FloatField()
-    sentiment_label = models.CharField(max_length=20)
+    author = models.CharField(max_length=255)
+    published_at = models.DateTimeField()
+    sentiment_score = models.FloatField(null=True, blank=True)
+    sentiment_label = models.CharField(max_length=20, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 ```
 
@@ -285,10 +293,17 @@ class Comment(models.Model):
 | POST | `/api/fetch-videos/` | JWT | Fetch and store user's 30 latest YouTube videos |
 | GET | `/api/get-videos/` | JWT | Get user's stored videos and profile |
 
-### Analytics Endpoints
-*Coming soon*
+### Comment Endpoints
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| POST | `/api/fetch-comments/` | JWT | Fetch top 100 comments per video, run VADER sentiment, store in DB |
+| GET | `/api/videos/<id>/comments/` | JWT | Get comments with sentiment scores for a specific video |
+
 
 ---
+
+
 
 ## Authentication
 
@@ -458,9 +473,12 @@ def sync_user(request):
 1. User logs in with Google (YouTube scope requested)
 2. Google access token saved to User model
 3. On first login (`is_analyzed=False`), `/api/fetch-videos/` auto-fetches 30 videos
-4. Videos stored in database, older than 30 deleted
+4. Old videos deleted, new ones created fresh
 5. `is_analyzed` set to `True` after first fetch
-6. Re-analyze button triggers manual refresh (bypasses `is_analyzed` check)
+6. `/api/fetch-comments/` fetches top 100 comments per video (public API, no auth token needed)
+7. VADER sentiment analysis runs on each comment during save
+8. Before reanalysis: current sentiment state saved to `AnalysisSnapshot`
+9. Re-analyze button triggers manual refresh of videos and comments
 
 ### YouTube API Endpoints Used
 
@@ -469,8 +487,9 @@ def sync_user(request):
 | `channels().list(mine=True)` | Get user's channel ID | 1 unit |
 | `playlistItems().list()` | Get video IDs from uploads playlist | 1 unit |
 | `videos().list()` | Get video details (title, stats) | 1 unit |
+| `commentThreads().list()` | Get top-level comments per video | 1 unit |
 
-**Total per fetch:** ~2-3 units (10,000 daily limit)
+**Total per fetch:** ~32-33 units for 30 videos (10,000 daily limit)
 
 ### YouTube Service (Backend)
 
@@ -534,6 +553,56 @@ def get_channel_videos(access_token, max_results=30):
         'views': int(item['statistics'].get('viewCount', 0)),
         # ... other fields
     } for item in response['items']]
+
+def get_video_comments(video_id, max_results=100):
+    """Fetch top-level comments for a video using public API"""
+    youtube = get_youtube_service()
+
+    try:
+        request = youtube.commentThreads().list(
+            part='snippet',
+            videoId=video_id,
+            maxResults=max_results,
+            order='relevance',
+            textFormat='plainText'
+        )
+        response = request.execute()
+    except Exception:
+        return []
+
+    comments = []
+    for item in response.get('items', []):
+        comment = item['snippet']['topLevelComment']['snippet']
+        comments.append({
+            'youtube_comment_id': item['id'],
+            'text': comment['textDisplay'],
+            'author': comment['authorDisplayName'],
+            'published_at': comment['publishedAt']
+        })
+
+    return comments
+```
+
+### Sentiment Analysis Service (Backend)
+
+```python
+# backtube1/services.py
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+
+analyzer = SentimentIntensityAnalyzer()
+
+def analyze_comment_sentiment(text):
+    """Run VADER sentiment on comment text, return (score, label)"""
+    score = analyzer.polarity_scores(text)['compound']
+
+    if score >= 0.05:
+        label = 'positive'
+    elif score <= -0.05:
+        label = 'negative'
+    else:
+        label = 'neutral'
+
+    return score, label
 ```
 
 ### Fetch Videos View (Backend)
@@ -550,42 +619,107 @@ def fetch_videos(request):
     if not user.access_token:
         return Response({'error': 'No YouTube access token. Please re-login.'}, status=400)
     
-    # Fetch videos from YouTube: user.access_token = token to access the YT account
     channel_id, videos_data = get_channel_videos(user.access_token, max_results=30)
     
     if not videos_data:
         return Response({'error': 'No videos found or invalid token'}, status=404)
     
-    # Save videos to database : using update_or_create to avoid duplicates and keep data updated
+    # Delete old videos (cascades to comments)
+    Video.objects.filter(user=user).delete()
+    
+    # Create fresh
     for video_data in videos_data:
-        Video.objects.update_or_create(
+        Video.objects.create(
+            user=user,
             youtube_video_id=video_data['youtube_video_id'],
-            defaults={
-                'user': user,
-                'title': video_data['title'],
-                'description': video_data['description'],
-                'thumbnail_url': video_data['thumbnail_url'],
-                'published_at': video_data['published_at'],
-                'views': video_data['views'],
-                'likes': video_data['likes'],
-                'comments_count': video_data['comments_count'],
-            }
+            title=video_data['title'],
+            description=video_data['description'],
+            thumbnail_url=video_data['thumbnail_url'],
+            published_at=video_data['published_at'],
+            views=video_data['views'],
+            likes=video_data['likes'],
+            comments_count=video_data['comments_count'],
         )
-
-    # Delete older videos beyond 30
-    user_videos = Video.objects.filter(user=user).order_by('-published_at')
-    if user_videos.count() > 30:
-        old_ids = list(user_videos[30:].values_list('id', flat=True))
-        Video.objects.filter(id__in=old_ids).delete()
 
     user.youtube_channel_id = channel_id
     user.is_analyzed = True
     user.save()
 
-    
     return Response({
         'message': f'Synced {len(videos_data)} videos',
     })
+```
+
+### Fetch Comments View (Backend)
+
+```python
+@api_view(['POST'])
+@require_supabase_auth
+def fetch_comments(request):
+    try:
+        user = User.objects.get(email=request.user_payload['email'])
+    except User.DoesNotExist:
+        return Response({'error': 'User not found'}, status=404)
+    
+    videos = Video.objects.filter(user=user)
+    total_comments = 0
+
+    # Save snapshot of current state before re-fetching
+    save_analysis_snapshot(user)
+
+    for video in videos:
+        com_data = get_video_comments(video.youtube_video_id)
+        Comment.objects.filter(video=video).delete()
+
+        for comment in com_data:
+            score, label = analyze_comment_sentiment(comment['text'])
+            Comment.objects.create(
+                video=video,
+                youtube_comment_id=comment['youtube_comment_id'],
+                text=comment['text'],
+                author=comment['author'],
+                published_at=comment['published_at'],
+                sentiment_score=score,
+                sentiment_label=label,
+            )
+        total_comments += len(com_data)
+
+    return Response({
+        'message': f'Fetched {total_comments} comments across {videos.count()} videos',
+    })
+```
+
+### Analysis Snapshot Helper (Backend)
+
+```python
+def save_analysis_snapshot(user):
+    """Save current sentiment state before reanalysis"""
+    videos = Video.objects.filter(user=user)
+    comments = Comment.objects.filter(video__in=videos)
+
+    if not comments.filter(sentiment_score__isnull=False).exists():
+        return
+
+    total = comments.count()
+    positive = comments.filter(sentiment_label='positive').count()
+    neutral = comments.filter(sentiment_label='neutral').count()
+    negative = comments.filter(sentiment_label='negative').count()
+
+    avg = comments.aggregate(Avg('sentiment_score'))['sentiment_score__avg'] or 0.0
+
+    top_video = videos.order_by('-views').first()
+
+    AnalysisSnapshot.objects.create(
+        user=user,
+        video_count=videos.count(),
+        total_comments=total,
+        avg_sentiment=round(avg, 4),
+        positive_percent=round((positive / total) * 100, 2) if total > 0 else 0,
+        neutral_percent=round((neutral / total) * 100, 2) if total > 0 else 0,
+        negative_percent=round((negative / total) * 100, 2) if total > 0 else 0,
+        top_video_id=top_video.youtube_video_id if top_video else None,
+        top_video_title=top_video.title if top_video else None,
+    )
 ```
 
 ### Get Videos View (Backend)
@@ -620,9 +754,9 @@ urtube/
 │   │   ├── urls.py
 │   │   └── wsgi.py
 │   ├── backtube1/
-│   │   ├── models.py        # User, Video models
-│   │   ├── views.py         # API views
-│   │   ├── services.py      # YouTube API integration
+│   │   ├── models.py        # User, Video, Comment, AnalysisSnapshot models
+│   │   ├── views.py         # API views (sync, fetch videos/comments, analytics)
+│   │   ├── services.py      # YouTube API + VADER sentiment analysis
 │   │   ├── serializers.py   # DRF serializers
 │   │   ├── decorators.py    # JWT auth decorator
 │   │   └── urls.py
