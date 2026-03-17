@@ -32,7 +32,7 @@ export default function Dashboard() {
       const supabase = createClient()
       
       const { data: { session } } = await supabase.auth.getSession()
-      
+
       if (!session) {
         setError('Not logged in')
         setLoading(false)
@@ -41,6 +41,7 @@ export default function Dashboard() {
 
       const { data: { user: authUser } } = await supabase.auth.getUser()
 
+      console.log('Session:', session.access_token)
       // Sync user first
       const syncResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/sync-user/`, {
         method: 'POST',

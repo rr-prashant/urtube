@@ -1,7 +1,8 @@
 from googleapiclient.discovery import build
 from django.conf import settings
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
-
+# Getting Video Data from YouTube API
 def get_youtube_service(access_token=None):
     """Create YouTube API service"""
     if access_token:
@@ -83,3 +84,55 @@ def get_channel_videos(access_token, max_results=30):
         })
     
     return channel_id, videos
+
+
+
+
+# Getting Comments Data from YouTube API
+def get_video_comments(video_id, max_length=100):
+    youtube = get_youtube_service()
+
+    try:
+        request= youtube.commentThreads().list(
+            part='snippet',
+            videoId=video_id,
+            maxResults=max_length,
+            order='relevance',
+            textFormat='plainText'
+        )
+        response = request.execute()
+    except Exception:
+        return []
+
+    comments = []
+
+    for item in response.get('items', []):
+        comment = item['snippet']['topLevelComment']['snippet']
+        comments.append({
+            'youtube_comment_id': item['id'],
+            'text': comment['textDisplay'],
+            'author': comment['authorDisplayName'],
+            'published_at': comment['publishedAt']
+        })
+    
+    return comments
+
+# Sentiment Analysis
+analyzer = SentimentIntensityAnalyzer()
+def comment_sentiment_analyze(text):
+    sentiment_results = analyzer.polarity_scores(text)['compound']
+
+    score = 0
+    label = ''
+
+    if sentiment_results >= 0.05:
+        score = sentiment_results
+        label = 'positive'
+    elif sentiment_results <= -0.05:
+        score = sentiment_results
+        label = 'negative'
+    else:
+        score = sentiment_results
+        label = 'neutral'
+
+    return score, label
