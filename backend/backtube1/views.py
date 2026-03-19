@@ -2,7 +2,7 @@
 from .models import User, Video, Comments, AnalysisSnapshot
 from rest_framework.response import Response
 from rest_framework.decorators import api_view
-from backtube1.serializers import UserSerializer, VideoSerializer
+from backtube1.serializers import UserSerializer, VideoSerializer, CommentSerializer
 from backtube1.decorators import require_supabase_auth
 from backtube1.services import get_channel_videos, get_video_comments, comment_sentiment_analyze
 from django.db.models import Avg
@@ -150,3 +150,20 @@ def save_analysis_snapshot(user):
         top_video_id=top_video.youtube_video_id if top_video else None,
         top_video_title=top_video.title if top_video else None,
     )
+
+
+@api_view(['GET'])
+@require_supabase_auth
+def get_comments(request, id):
+    try:
+        user = User.objects.get(email=request.user_payload['email'])
+    except User.DoesNotExist:
+        return Response({'error': 'User not found'}, status=404)
+    
+    comment = Comments.objects.filter(video__user=user, video__id=id).order_by('-published_at')
+    
+    return Response({
+        'user': UserSerializer(user).data,
+        'comments': CommentSerializer(comment, many=True).data,
+        'count': comment.count(),
+    })

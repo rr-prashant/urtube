@@ -1,6 +1,6 @@
 
 from rest_framework import serializers
-from .models import User, Video
+from .models import User, Video, Comments
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -16,10 +16,22 @@ class VideoSerializer(serializers.ModelSerializer):
         fields = [
             'id', 
             'youtube_video_id',  
-            'title', 'description', 
+            'title',
+            'description', 
             'thumbnail_url', 
             'views', 
             'likes', 
             'comments_count', 
             'published_at',
-            ]
+        ]
+
+class CommentSerializer(serializers.Serializer):
+    class Meta:
+        model = Comments
+        fields = [
+            'id',
+            'author_name',
+            'published_at',
+            'sentiment_score',
+            'sentiment_label',
+        ]
