@@ -25,12 +25,14 @@ class VideoSerializer(serializers.ModelSerializer):
             'published_at',
         ]
 
-class CommentSerializer(serializers.Serializer):
+class CommentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Comments
         fields = [
             'id',
-            'author_name',
+            'youtube_comment_id',
+            'text',
+            'author',
             'published_at',
             'sentiment_score',
             'sentiment_label',

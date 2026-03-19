@@ -21,10 +21,20 @@ interface UserData {
   is_analyzed: boolean
 }
 
+interface Sentiment {
+  avg_score: number
+  positive_percent: number
+  neutral_percent: number
+  negative_percent: number
+  total_comments: number
+  video_count: number
+}
+
 export default function Dashboard() {
   const [user, setUser] = useState<UserData | null>(null)
   const [videos, setVideos] = useState<Video[]>([])
   const [loading, setLoading] = useState(true)
+  const [sentiment, setSentiment] = useState<Sentiment | null>(null)
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -41,13 +51,12 @@ export default function Dashboard() {
 
       const { data: { user: authUser } } = await supabase.auth.getUser()
 
-      console.log('Session:', session.access_token)
       // Sync user first
       const syncResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/sync-user/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`
+          'Authorization': `Bearer ${session?.access_token}`
         },
         body: JSON.stringify({
           sub: authUser?.user_metadata.sub,
@@ -66,15 +75,19 @@ export default function Dashboard() {
         await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/fetch-videos/`, {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${session.access_token}`
+            'Authorization': `Bearer ${session?.access_token}`
           }
         })
+        await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/fetch-comments/`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${session?.access_token}` }
+    })
       }
 
       // Get videos
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/get-videos/`, {
         headers: {
-          'Authorization': `Bearer ${session.access_token}`
+          'Authorization': `Bearer ${session?.access_token}`
         }
       })
 
@@ -85,6 +98,7 @@ export default function Dashboard() {
       }
 
       const data = await response.json()
+      setSentiment(data.sentiment)
       setUser(data.user)
       setVideos(data.videos)
       setLoading(false)
@@ -105,6 +119,10 @@ export default function Dashboard() {
         'Authorization': `Bearer ${session?.access_token}`
       }
     })
+    await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/fetch-comments/`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${session?.access_token}` }
+    })
 
     const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/get-videos/`, {
       headers: {
@@ -112,6 +130,7 @@ export default function Dashboard() {
       }
     })
     const data = await response.json()
+    setSentiment(data.sentiment)
     setUser(data.user)
     setVideos(data.videos)
     setLoading(false)
@@ -130,6 +149,16 @@ export default function Dashboard() {
         <p>Email: {user?.email}</p>
         {user?.picture && <img src={user.picture} alt="Profile" width={100} />}
       </div>
+      {sentiment && (
+        <div>
+          <h2>Sentiment Analysis</h2>
+          <p>Total Comments Analyzed: {sentiment.total_comments}</p>
+          <p>Average Score: {sentiment.avg_score}</p>
+          <p>Positive: {sentiment.positive_percent}%</p>
+          <p>Neutral: {sentiment.neutral_percent}%</p>
+          <p>Negative: {sentiment.negative_percent}%</p>
+        </div>
+      )}
 
       <div>
         <h2>Videos ({videos.length})</h2>

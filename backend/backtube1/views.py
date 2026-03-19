@@ -4,8 +4,8 @@ from rest_framework.response import Response
 from rest_framework.decorators import api_view
 from backtube1.serializers import UserSerializer, VideoSerializer, CommentSerializer
 from backtube1.decorators import require_supabase_auth
-from backtube1.services import get_channel_videos, get_video_comments, comment_sentiment_analyze
-from django.db.models import Avg
+from backtube1.services import get_channel_videos, get_video_comments, comment_sentiment_analyze, get_sentiment_stats
+
 
 @api_view(["POST"])
 @require_supabase_auth
@@ -75,11 +75,20 @@ def get_videos(request):
         return Response({'error': 'User not found'}, status=404)
     
     videos = Video.objects.filter(user=user).order_by('-published_at')
-    
+    sentiment = get_sentiment_stats(user) or {
+        'avg_score': 0,
+        'positive_percent': 0,
+        'neutral_percent': 0,
+        'negative_percent': 0,
+        'total_comments': 0,
+        'video_count': 0,
+    }
+
     return Response({
         'user': UserSerializer(user).data,
         'videos': VideoSerializer(videos, many=True).data,
         'count': videos.count(),
+        'sentiment': sentiment,
     })
 
 
@@ -122,31 +131,20 @@ def fetch_comments(request):
 
 
 def save_analysis_snapshot(user):
-    videos = Video.objects.filter(user=user)
-    comments = Comments.objects.filter(video__in=videos)
-
-    # Only snapshot if there's existing analyzed data
-    if not comments.filter(sentiment_score__isnull=False).exists():
+    stats = get_sentiment_stats(user)
+    if not stats:
         return
 
-    total = comments.count()
-    positive = comments.filter(sentiment_label='positive').count()
-    neutral = comments.filter(sentiment_label='neutral').count()
-    negative = comments.filter(sentiment_label='negative').count()
-
-    avg = comments.aggregate(Avg('sentiment_score'))['sentiment_score__avg'] or 0.0
-
-    # Find top video by views
-    top_video = videos.order_by('-views').first()
+    top_video = Video.objects.filter(user=user).order_by('-views').first()
 
     AnalysisSnapshot.objects.create(
         user=user,
-        video_count=videos.count(),
-        total_comments=total,
-        avg_sentiment=round(avg, 4),
-        positive_percent=round((positive / total) * 100, 2) if total > 0 else 0,
-        neutral_percent=round((neutral / total) * 100, 2) if total > 0 else 0,
-        negative_percent=round((negative / total) * 100, 2) if total > 0 else 0,
+        video_count=stats['video_count'],
+        total_comments=stats['total_comments'],
+        avg_sentiment=stats['avg_score'],
+        positive_percent=stats['positive_percent'],
+        neutral_percent=stats['neutral_percent'],
+        negative_percent=stats['negative_percent'],
         top_video_id=top_video.youtube_video_id if top_video else None,
         top_video_title=top_video.title if top_video else None,
     )
@@ -163,7 +161,6 @@ def get_comments(request, id):
     comment = Comments.objects.filter(video__user=user, video__id=id).order_by('-published_at')
     
     return Response({
-        'user': UserSerializer(user).data,
         'comments': CommentSerializer(comment, many=True).data,
         'count': comment.count(),
     })

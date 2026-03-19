@@ -1,6 +1,8 @@
 from googleapiclient.discovery import build
 from django.conf import settings
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+from .models import User, Video, Comments
+from django.db.models import Avg
 
 # Getting Video Data from YouTube API
 def get_youtube_service(access_token=None):
@@ -136,3 +138,34 @@ def comment_sentiment_analyze(text):
         label = 'neutral'
 
     return score, label
+
+
+# to calculate the overall sentiment
+def get_sentiment_stats(user):
+    videos = Video.objects.filter(user=user)
+    comments = Comments.objects.filter(video__in=videos)
+    total = comments.count()
+
+    if total == 0:
+        return {
+            'avg_score': 0,
+            'positive_percent': 0,
+            'neutral_percent': 0,
+            'negative_percent': 0,
+            'total_comments': 0,
+            'video_count': videos.count(),
+        }
+
+    positive = comments.filter(sentiment_label='positive').count()
+    neutral = comments.filter(sentiment_label='neutral').count()
+    negative = comments.filter(sentiment_label='negative').count()
+    avg = comments.aggregate(Avg('sentiment_score'))['sentiment_score__avg'] or 0.0
+
+    return {
+        'avg_score': round(avg, 4),
+        'positive_percent': round((positive / total) * 100, 2),
+        'neutral_percent': round((neutral / total) * 100, 2),
+        'negative_percent': round((negative / total) * 100, 2),
+        'total_comments': total,
+        'video_count': videos.count(),
+    }
