@@ -1,4 +1,6 @@
 
+from xml.etree.ElementTree import Comment
+
 from .models import User, Video, Comments, AnalysisSnapshot
 from rest_framework.response import Response
 from rest_framework.decorators import api_view
@@ -40,6 +42,10 @@ def fetch_videos(request):
     
     if not videos_data:
         return Response({'error': 'No videos found or invalid token'}, status=404)
+    
+    # Saving before delete previous data
+    if Comments.objects.filter(video__user=user).exists():
+        save_analysis_snapshot(user)
     
     # Delete old videos (cascades to comments too)
     Video.objects.filter(user=user).delete()
@@ -101,14 +107,10 @@ def fetch_comments(request):
         return Response({'error': 'User not found'}, status=404)
     
     videos = Video.objects.filter(user=user).order_by('-published_at')
-
-    save_analysis_snapshot(user)  # Save snapshot before updating comments
     
     for video in videos:
         com_data = get_video_comments(video.youtube_video_id)
         
-        
-
         Comments.objects.filter(video=video).delete()  # Clear old comments before adding new ones
         
         total_comment = 0
