@@ -45,6 +45,8 @@ SUPABASE_PUBLISHABLE_KEY = os.getenv('SUPABASE_PUBLISHABLE_KEY')
 # Youtube API key
 YOUTUBE_API_KEY = os.getenv('YOUTUBE_API_KEY')
 
+# OpenAI API key
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',

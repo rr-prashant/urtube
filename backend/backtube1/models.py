@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
+from pgvector.django import VectorField
 
 # Create your models here.
 
@@ -20,6 +21,7 @@ class Video(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='videos')
     youtube_video_id = models.CharField(max_length=50, unique=True)
     title = models.TextField()
+    title_embedding = VectorField(dimensions=1536, null=True, blank=True)
     description = models.TextField(null=True, blank=True)
     thumbnail_url = models.URLField(null=True, blank=True)
     views = models.IntegerField(default=0)
@@ -28,6 +30,7 @@ class Video(models.Model):
     published_at = models.DateTimeField()
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    cluster = models.ForeignKey('TopicCluster', on_delete=models.SET_NULL, null=True, blank=True, related_name='videos')
 
     class Meta:
         ordering = ['-published_at']
@@ -69,3 +72,15 @@ class Comments(models.Model):
 
     def __str__(self):
         return f"{self.author}: {self.text[:50]}"
+    
+
+class TopicCluster(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='clusters')
+    cluster_label = models.IntegerField()
+    cluster_name = models.CharField(max_length=255, null=True, blank=True)
+    avg_views = models.FloatField(default=0)
+    avg_engagement = models.FloatField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Cluster {self.cluster_label} for {self.user.email}"
