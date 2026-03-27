@@ -3,6 +3,8 @@ from django.conf import settings
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 from .models import User, Video, Comments
 from django.db.models import Avg
+from openai import OpenAI
+
 
 # Getting Video Data from YouTube API
 def get_youtube_service(access_token=None):
@@ -169,3 +171,15 @@ def get_sentiment_stats(user):
         'total_comments': total,
         'video_count': videos.count(),
     }
+
+
+
+# embedding generation
+openai_client = OpenAI(api_key=settings.OPENAI_API_KEY)
+def generate_embedding(title):
+    response = openai_client.embeddings.create(
+        model="text-embedding-3-small",
+        input=title
+    )
+    return response.data[0].embedding
+
