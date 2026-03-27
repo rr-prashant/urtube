@@ -4,7 +4,7 @@ from rest_framework.response import Response
 from rest_framework.decorators import api_view
 from backtube1.serializers import UserSerializer, VideoSerializer, CommentSerializer
 from backtube1.decorators import require_supabase_auth
-from backtube1.services import get_channel_videos, get_video_comments, comment_sentiment_analyze, get_sentiment_stats
+from backtube1.services import generate_embedding, get_channel_videos, get_video_comments, comment_sentiment_analyze, get_sentiment_stats
 
 
 @api_view(["POST"])
@@ -50,7 +50,7 @@ def fetch_videos(request):
     
     # Create fresh
     for video_data in videos_data:
-        Video.objects.create(
+        video = Video.objects.create(
             user=user,
             youtube_video_id=video_data['youtube_video_id'],
             title=video_data['title'],
@@ -61,6 +61,8 @@ def fetch_videos(request):
             likes=video_data['likes'],
             comments_count=video_data['comments_count'],
         )
+        video.title_embedding = generate_embedding(video.title)
+        video.save()
 
     user.youtube_channel_id = channel_id
     user.is_analyzed = True
