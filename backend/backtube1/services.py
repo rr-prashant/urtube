@@ -4,7 +4,9 @@ from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 from .models import User, Video, Comments
 from django.db.models import Avg
 from openai import OpenAI
-
+from sklearn.cluster import KMeans
+import numpy as np
+from sklearn.metrics import silhouette_score
 
 # Getting Video Data from YouTube API
 def get_youtube_service(access_token=None):
@@ -183,3 +185,43 @@ def generate_embedding(title):
     )
     return response.data[0].embedding
 
+
+# Clustering videos based on title embeddings
+
+def cluster_video(user):
+    videos = Video.objects.filter(user=user, title_embedding__isnull=False)
+
+    if videos.count() < 2:
+        return {
+            'message': 'Not enough videos with embeddings to perform clustering.',
+        }
+    
+    embeddings = np.array([video.title_embedding for video in videos])
+
+
+    best_k = 2
+    best_score = -1
+
+    max_k = min(6, len(videos) - 1)
+    for k in range(2, max_k + 1):
+        kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
+        labels = kmeans.fit_predict(embeddings)
+        score = silhouette_score(embeddings, labels)
+
+        if score > best_score:
+            best_k = k
+            best_score = score
+        
+    # Final clustering with best K
+    kmeans = KMeans(n_clusters=best_k, random_state=42, n_init=10)
+    labels = kmeans.fit_predict(embeddings)
+
+    # Assigning cluster labels to videos
+    results = []
+    for video, label in zip(videos, labels):
+       results.apped({
+           'video' : video,
+           'cluster_label' : int(label),
+       })
+
+    return results
