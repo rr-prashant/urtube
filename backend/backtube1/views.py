@@ -1,12 +1,14 @@
 
-from .models import User, Video, Comments, AnalysisSnapshot
+from .models import User, Video, Comments, AnalysisSnapshot, TopicCluster
 from rest_framework.response import Response
 from rest_framework.decorators import api_view
 from backtube1.serializers import UserSerializer, VideoSerializer, CommentSerializer
 from backtube1.decorators import require_supabase_auth
-from backtube1.services import generate_embedding, get_channel_videos, get_video_comments, comment_sentiment_analyze, get_sentiment_stats
+from backtube1.services import generate_embedding, get_channel_videos, get_video_comments, comment_sentiment_analyze, get_sentiment_stats, cluster_video
 
+from backend.backtube1 import models
 
+# this helps to create user linking with the frontend
 @api_view(["POST"])
 @require_supabase_auth
 def sync_user(request):
@@ -24,7 +26,7 @@ def sync_user(request):
     )
     return Response({'is_analyzed': user.is_analyzed})
 
-
+# this fetches videos from user channel while handling data unloading
 @api_view(['POST'])
 @require_supabase_auth
 def fetch_videos(request):
@@ -72,6 +74,8 @@ def fetch_videos(request):
         'message': f'Synced {len(videos_data)} videos',
     })
 
+
+# getting videos from user channel alon with sentiment stats for dashboard display
 @api_view(['GET'])
 @require_supabase_auth
 def get_videos(request):
@@ -97,7 +101,7 @@ def get_videos(request):
         'sentiment': sentiment,
     })
 
-
+# fetching comments from user yt channel and generating analyze sentiment for each comment
 @api_view(['POST'])
 @require_supabase_auth
 def fetch_comments(request):
@@ -132,6 +136,7 @@ def fetch_comments(request):
     })
 
 
+# helper func: save snapshot of the overrall channel sentiment and stats before deleting old data for history
 def save_analysis_snapshot(user):
     stats = get_sentiment_stats(user)
     if not stats:
@@ -152,6 +157,7 @@ def save_analysis_snapshot(user):
     )
 
 
+# Get comments for a specific video
 @api_view(['GET'])
 @require_supabase_auth
 def get_comments(request, id):
@@ -166,3 +172,41 @@ def get_comments(request, id):
         'comments': CommentSerializer(comment, many=True).data,
         'count': comment.count(),
     })
+
+
+# helper func: to do the clustering for the videos
+def clustering_vid(user):
+    new_clusters = cluster_video(user)
+    if not new_clusters:
+        return
+    
+    Video.objects.filter(user=user).update(cluster=None)  # clearing old cluster for videos before assigning new ones
+    
+    TopicCluster.objects.filter(user=user).delete()  # Clear old clusters before creating new ones  
+
+    # first group the new clusters with their respective labels
+    cluster_map = {}
+    for c in new_clusters:
+        label = c['cluster_label']
+        if label not in cluster_map:
+            cluster_map[label] = []
+        cluster_map[label].append(c['video'])
+    
+    # now creating cluster objects and assigning videos to them
+    for label, videos in cluster_map.items():
+        avg_views = sum(v.views for v in videos) / len(videos)
+        avg_engagement = sum(
+            (v.likes + v.comments_count) / v.views if v.views > 0 else 0
+            for v in videos
+        ) / len(videos)
+
+        cluster = TopicCluster.objects.create(
+            user=user,
+            cluster_label=label,
+            avg_views=round(avg_views, 2),
+            avg_engagement=round(avg_engagement, 2),
+        )
+
+        for video in videos:
+            video.cluster = cluster
+            video.save()

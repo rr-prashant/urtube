@@ -191,7 +191,7 @@ def generate_embedding(title):
 def cluster_video(user):
     videos = Video.objects.filter(user=user, title_embedding__isnull=False)
 
-    if videos.count() < 2:
+    if videos.count() < 3:
         return {
             'message': 'Not enough videos with embeddings to perform clustering.',
         }
@@ -202,6 +202,7 @@ def cluster_video(user):
     best_k = 2
     best_score = -1
 
+    # the silhouette loop to find the exact number of clusters needed
     max_k = min(6, len(videos) - 1)
     for k in range(2, max_k + 1):
         kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
