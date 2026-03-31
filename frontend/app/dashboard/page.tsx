@@ -30,11 +30,22 @@ interface Sentiment {
   video_count: number
 }
 
+interface Cluster {
+  id: number
+  cluster_label: number
+  cluster_name: string | null
+  avg_views: number
+  avg_engagement: number
+  videos: Video[]
+}
+
+
 export default function Dashboard() {
   const [user, setUser] = useState<UserData | null>(null)
   const [videos, setVideos] = useState<Video[]>([])
   const [loading, setLoading] = useState(true)
   const [sentiment, setSentiment] = useState<Sentiment | null>(null)
+  const [clusters, setClusters] = useState<Cluster[]>([])
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -97,6 +108,20 @@ export default function Dashboard() {
         return
       }
 
+
+      // get clusters
+      const clusterResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/get-clusters/`, {
+        headers: { 'Authorization': `Bearer ${session.access_token}` }
+      })
+      const clusterData = await clusterResponse.json()
+      setClusters(clusterData.clusters)
+
+      if (!clusterResponse.ok) {
+        setError('Failed to fetch clusters')
+        setLoading(false)
+        return
+      }
+      
       const data = await response.json()
       setSentiment(data.sentiment)
       setUser(data.user)
@@ -113,22 +138,35 @@ export default function Dashboard() {
     
     const { data: { session } } = await supabase.auth.getSession()
     
+    // fetching videos after re-analysis
     await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/fetch-videos/`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${session?.access_token}`
       }
     })
+
+    // fetching comments after re-analysis
     await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/fetch-comments/`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${session?.access_token}` }
     })
 
+    // getting videos after re-analysis
     const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/get-videos/`, {
       headers: {
         'Authorization': `Bearer ${session?.access_token}`
       }
     })
+
+    // getting clusters after re-analysis
+    const clusterResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/get-clusters/`, {
+      headers: { 'Authorization': `Bearer ${session?.access_token}` }
+    })
+
+
+    const clusterData = await clusterResponse.json()
+    setClusters(clusterData.clusters)
     const data = await response.json()
     setSentiment(data.sentiment)
     setUser(data.user)
@@ -157,6 +195,23 @@ export default function Dashboard() {
           <p>Positive: {sentiment.positive_percent}%</p>
           <p>Neutral: {sentiment.neutral_percent}%</p>
           <p>Negative: {sentiment.negative_percent}%</p>
+        </div>
+      )}
+
+      {clusters.length > 0 && (
+        <div>
+          <h2>Topic Clusters</h2>
+          {clusters.map((cluster) => (
+            <div key={cluster.id}>
+              <h3>{cluster.cluster_name || `Cluster ${cluster.cluster_label}`}</h3>
+              <p>Avg Views: {Math.round(cluster.avg_views)} | Avg Engagement: {(cluster.avg_engagement * 100).toFixed(2)}%</p>
+              <ul>
+                {cluster.videos.map((video) => (
+                  <li key={video.youtube_video_id}>{video.title}</li>
+                ))}
+              </ul>
+            </div>
+          ))}
         </div>
       )}
 

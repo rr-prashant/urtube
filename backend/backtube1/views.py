@@ -2,11 +2,10 @@
 from .models import User, Video, Comments, AnalysisSnapshot, TopicCluster
 from rest_framework.response import Response
 from rest_framework.decorators import api_view
-from backtube1.serializers import UserSerializer, VideoSerializer, CommentSerializer
+from backtube1.serializers import UserSerializer, VideoSerializer, CommentSerializer, TopicClusterSerializer
 from backtube1.decorators import require_supabase_auth
 from backtube1.services import generate_embedding, get_channel_videos, get_video_comments, comment_sentiment_analyze, get_sentiment_stats, cluster_video
 
-from backend.backtube1 import models
 
 # this helps to create user linking with the frontend
 @api_view(["POST"])
@@ -69,6 +68,8 @@ def fetch_videos(request):
     user.youtube_channel_id = channel_id
     user.is_analyzed = True
     user.save()
+
+    save_cluster(user)
 
     return Response({
         'message': f'Synced {len(videos_data)} videos',
@@ -175,7 +176,7 @@ def get_comments(request, id):
 
 
 # helper func: to do the clustering for the videos
-def clustering_vid(user):
+def save_cluster(user):
     new_clusters = cluster_video(user)
     if not new_clusters:
         return
@@ -210,3 +211,19 @@ def clustering_vid(user):
         for video in videos:
             video.cluster = cluster
             video.save()
+
+
+# Get comments for a specific video
+@api_view(['GET'])
+@require_supabase_auth
+def get_clusters(request):
+    try:
+        user = User.objects.get(email=request.user_payload['email'])
+    except User.DoesNotExist:
+        return Response({'error': 'User not found'}, status=404)
+    
+    clusters = TopicCluster.objects.filter(user=user)
+    
+    return Response({
+        'clusters': TopicClusterSerializer(clusters, many=True).data,
+    })

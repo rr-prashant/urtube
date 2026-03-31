@@ -220,9 +220,10 @@ def cluster_video(user):
     # Assigning cluster labels to videos
     results = []
     for video, label in zip(videos, labels):
-       results.apped({
+       results.append({
            'video' : video,
            'cluster_label' : int(label),
        })
 
     return results
+

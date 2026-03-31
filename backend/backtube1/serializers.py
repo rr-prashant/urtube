@@ -1,6 +1,6 @@
 
 from rest_framework import serializers
-from .models import User, Video, Comments
+from .models import User, Video, Comments, TopicCluster
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -36,4 +36,17 @@ class CommentSerializer(serializers.ModelSerializer):
             'published_at',
             'sentiment_score',
             'sentiment_label',
+        ]
+
+class TopicClusterSerializer(serializers.ModelSerializer):
+    videos = VideoSerializer(read_only=True, many=True)
+    class Meta:
+        model = TopicCluster
+        fields = [
+            'id',
+            'cluster_label',
+            'cluster_name',
+            'avg_views',
+            'avg_engagement',
+            'videos',
         ]
