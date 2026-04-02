@@ -84,3 +84,13 @@ class TopicCluster(models.Model):
 
     def __str__(self):
         return f"Cluster {self.cluster_label} for {self.user.email}"
+    
+
+# Public mode
+class ResearchCache(models.Model):
+    query = models.CharField(max_length=255, unique=True)
+    results = models.JSONField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Cache: {self.query}"
