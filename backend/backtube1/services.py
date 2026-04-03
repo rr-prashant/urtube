@@ -69,7 +69,7 @@ def get_channel_videos(access_token, max_results=30):
     
     video_ids = [item['contentDetails']['videoId'] for item in response['items']]
     
-    # Step 4: Get video details (can batch up to 50 IDs)
+    # Step 4: Get video details
     request = youtube.videos().list(
         part='snippet,statistics',
         id=','.join(video_ids)
@@ -227,3 +227,42 @@ def cluster_video(user):
 
     return results
 
+
+# For public videos
+def public_search_video(query,max_results=50):
+    youtube = get_youtube_service()
+
+    request = youtube.search().list(
+        part='id',
+        q=query,
+        type='video',
+        order='viewCount',
+        maxResults=max_results
+    )
+    response = request.execute()
+    
+    video_ids = [item['id']['videoId'] for item in response.get('items', [])]
+
+    if not video_ids:
+        return []
+    
+    request = youtube.videos().list(
+        part='snippet,statistics',
+        id=','.join(video_ids)
+    )
+    response = request.execute()
+
+    videos = []
+    for item in response.get('items', []):
+        videos.append({
+            'youtube_video_id': item['id'],
+            'title': item['snippet']['title'],
+            'description': item['snippet'].get('description', ''),
+            'thumbnail_url': item['snippet']['thumbnails'].get('high', {}).get('url'),
+            'published_at': item['snippet']['publishedAt'],
+            'views': int(item['statistics'].get('viewCount', 0)),
+            'likes': int(item['statistics'].get('likeCount', 0)),
+            'comments_count': int(item['statistics'].get('commentCount', 0)),
+        })
+    
+    return videos
