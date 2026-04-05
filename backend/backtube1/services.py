@@ -125,7 +125,7 @@ def get_video_comments(video_id, max_length=100):
 
 # Sentiment Analysis
 analyzer = SentimentIntensityAnalyzer()
-def comment_sentiment_analyze(text):
+def sentiment_analyze(text):
     sentiment_results = analyzer.polarity_scores(text)['compound']
 
     score = 0
@@ -144,7 +144,7 @@ def comment_sentiment_analyze(text):
     return score, label
 
 
-# to calculate the overall sentiment
+# to calculate the overall sentiment for logged in users
 def get_sentiment_stats(user):
     videos = Video.objects.filter(user=user)
     comments = Comments.objects.filter(video__in=videos)
