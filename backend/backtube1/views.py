@@ -230,49 +230,50 @@ def get_clusters(request):
 
 
 # search videos for public mode
-# @api_view(['POST'])
-# def public_research(request):
-#     query = request.data.get('query', '')
+@api_view(['POST'])
+def public_research(request):
+    query = request.data.get('query', '')
 
-#     if not query:
-#         return Response({'error': 'Query is required'}, status=400)
+    if not query:
+        return Response({'error': 'Query is required'}, status=400)
 
 
-#     videos = public_search_video(query)
+    videos = public_search_video(query)
 
-#     if not videos:
-#         return Response({'error': 'No videos found'}, status=404)
+    if not videos:
+        return Response({'error': 'No videos found'}, status=404)
     
-#     for video in videos:
-#         text = video['title'] + ' ' + video['description']
-#         score, label = sentiment_analyze(text)
-#         video['sentiment_score'] = score
-#         video['sentiment_label'] = label
 
-#     # for top 10 videos
-#     top_ten = sorted(videos, key= lambda v: v['views'], reverse=True)[:10]  
+    # for top 10 videos
+    top_ten = sorted(videos, key= lambda v: v['views'], reverse=True)[:10]  
 
-#     # sentiment brekdown
-#     total = len(videos)
-#     positive = sum(1 for v in videos if v['sentiment_label'] == 'positive')
-#     neutral = sum(1 for v in videos if v['sentiment_label'] == 'neutral')
-#     negative = sum(1 for v in videos if v['sentiment_label'] == 'negative')
+    # sentiment brekdown
+    total = len(videos)
+    total_views = sum(v['views'] for v in videos)
+    total_likes = sum(v['likes'] for v in videos)
+    total_comments = sum(v['comments_count'] for v in videos)
+    
 
-#     # engagement pattern (avg likes/views ratio)
-#     engagement = [
-#         (v['likes']/ v['views']) if v['views'] > 0 else 0
-#         for v in videos
-#     ]
-#     avg_engagement = sum(engagement) / len(engagement) if engagement else 0
+    avg_views = total_views / total
+    avg_likes = total_likes / total
+    avg_engagement = (total_likes / total_views * 100) if total_views > 0 else 0
 
-#     return Response({
-#         'query' : query,
-#         'total_results': total,
-#         'trending_titles': [{'title': v['title'], 'views': v['views']} for v in top_ten],
-#         'sentiment':{
-#             'positive_percent': round((positive / total) * 100, 2),
-#             'neutral_percent': round((neutral / total) * 100, 2),
-#             'negative_percent': round((negative / total) * 100, 2),
-#         },
-#         'avg_engament': round(avg_engagement*100, 2),
-#     })
+    return Response({
+        'query' : query,
+        'total_results': total,
+        'videos': videos,
+        'trending_titles': [
+            {
+                'title': v['title'], 
+                'views': v['views'],
+                'likes': v['likes'],
+                'comments_count': v['comments_count'],
+            } for v in top_ten
+        ],
+        'engagement':{
+            'avg_views': round(avg_views),
+            'avg_likes': round(avg_likes),
+            'avg_engagement_percent': round(avg_engagement, 2),
+            'total_comments': total_comments,
+        },
+    })
