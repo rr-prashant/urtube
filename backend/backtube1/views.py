@@ -1,11 +1,12 @@
 
-from .models import User, Video, Comments, AnalysisSnapshot, TopicCluster
+from .models import User, Video, Comments, AnalysisSnapshot, TopicCluster, ResearchCache
 from rest_framework.response import Response
 from rest_framework.decorators import api_view
 from backtube1.serializers import UserSerializer, VideoSerializer, CommentSerializer, TopicClusterSerializer
 from backtube1.decorators import require_supabase_auth
 from backtube1.services import generate_embedding, get_channel_videos, get_video_comments, sentiment_analyze, get_sentiment_stats, cluster_video, public_search_video
-
+from django.utils import timezone
+from datetime import timedelta
 
 # this helps to create user linking with the frontend
 @api_view(["POST"])
@@ -237,6 +238,12 @@ def public_research(request):
     if not query:
         return Response({'error': 'Query is required'}, status=400)
 
+    # Check cache first
+    cache = ResearchCache.objects.filter(query=query.lower()).first()
+    if cache and cache.created_at > timezone.now() - timedelta(days=7):
+        return Response(cache.results)
+
+    # No cache or expired — fetch fresh
 
     videos = public_search_video(query)
 
@@ -258,7 +265,7 @@ def public_research(request):
     avg_likes = total_likes / total
     avg_engagement = (total_likes / total_views * 100) if total_views > 0 else 0
 
-    return Response({
+    results = {
         'query' : query,
         'total_results': total,
         'videos': videos,
@@ -276,4 +283,10 @@ def public_research(request):
             'avg_engagement_percent': round(avg_engagement, 2),
             'total_comments': total_comments,
         },
-    })
+    }
+
+    # Save to cache — delete old entry if exists, create fresh
+    ResearchCache.objects.filter(query=query.lower()).delete()
+    ResearchCache.objects.create(query=query.lower(), results=results)
+
+    return Response(results)
