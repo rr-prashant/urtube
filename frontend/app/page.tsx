@@ -75,6 +75,9 @@ export default function Home() {
           ) : (
             <button onClick={signIn}>Log in with Google</button>
           )}
+          <Link href="/publicmode">
+                <button type="button">Public Mode</button>
+          </Link>
         </div>
       </nav>
     </div>
