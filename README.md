@@ -213,6 +213,7 @@ class Video(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='videos')
     youtube_video_id = models.CharField(max_length=50, unique=True)
     title = models.TextField()
+    title_embedding = VectorField(dimensions=1536, null=True, blank=True)
     description = models.TextField(null=True, blank=True)
     thumbnail_url = models.URLField(null=True, blank=True)
     views = models.IntegerField(default=0)
@@ -221,9 +222,7 @@ class Video(models.Model):
     published_at = models.DateTimeField()
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        ordering = ['-published_at']
+    cluster = models.ForeignKey('TopicCluster', on_delete=models.SET_NULL, null=True, blank=True, related_name='videos')
 ```
 ### Analysis Snapshot Model
 
@@ -243,11 +242,6 @@ class AnalysisSnapshot(models.Model):
     top_video_id = models.CharField(max_length=50, null=True, blank=True)
     top_video_title = models.TextField(null=True, blank=True)
     
-    class Meta:
-        ordering = ['-created_at']
-    
-    def __str__(self):
-        return f"Snapshot for {self.user.email} at {self.created_at}"
 ```
 
 ### Comment Model
@@ -264,19 +258,33 @@ class Comment(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 ```
 
-### Field Mapping (Google → Django)
+### Clusters model
 
-| Django Field | Supabase Source |
-|--------------|-----------------|
-| `sub` | `user.user_metadata.sub` |
-| `email` | `user.email` |
-| `first_name` | `user.user_metadata.full_name` |
-| `email_verified` | `user.user_metadata.email_verified` |
-| `picture` | `user.user_metadata.picture` |
-| `username` | `user.email` |
-| `access_token` | `session.provider_token` |
+```python
+class TopicCluster(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='clusters')
+    cluster_label = models.IntegerField()
+    cluster_name = models.CharField(max_length=255, null=True, blank=True)
+    avg_views = models.FloatField(default=0)
+    avg_engagement = models.FloatField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
 
----
+    def __str__(self):
+        return f"Cluster {self.cluster_label} for {self.user.email}"
+```
+
+### Public mode
+
+```python
+class ResearchCache(models.Model):
+    query = models.CharField(max_length=255, unique=True)
+    results = models.JSONField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Cache: {self.query}"
+```
+
 
 ## API Endpoints
 
@@ -298,7 +306,7 @@ class Comment(models.Model):
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
 | POST | `/api/fetch-comments/` | JWT | Fetch top 100 comments per video, run VADER sentiment, store in DB |
-| GET | `/api/videos/<id>/comments/` | JWT | Get comments with sentiment scores for a specific video |
+
 
 
 ---
@@ -624,12 +632,16 @@ def fetch_videos(request):
     if not videos_data:
         return Response({'error': 'No videos found or invalid token'}, status=404)
     
-    # Delete old videos (cascades to comments)
+    # Saving before delete previous data
+    if Comments.objects.filter(video__user=user).exists():
+        save_analysis_snapshot(user)
+    
+    # Delete old videos (cascades to comments too)
     Video.objects.filter(user=user).delete()
     
     # Create fresh
     for video_data in videos_data:
-        Video.objects.create(
+        video = Video.objects.create(
             user=user,
             youtube_video_id=video_data['youtube_video_id'],
             title=video_data['title'],
@@ -640,10 +652,14 @@ def fetch_videos(request):
             likes=video_data['likes'],
             comments_count=video_data['comments_count'],
         )
+        video.title_embedding = generate_embedding(video.title)
+        video.save()
 
     user.youtube_channel_id = channel_id
     user.is_analyzed = True
     user.save()
+
+    save_cluster(user)
 
     return Response({
         'message': f'Synced {len(videos_data)} videos',
@@ -693,30 +709,20 @@ def fetch_comments(request):
 
 ```python
 def save_analysis_snapshot(user):
-    """Save current sentiment state before reanalysis"""
-    videos = Video.objects.filter(user=user)
-    comments = Comment.objects.filter(video__in=videos)
-
-    if not comments.filter(sentiment_score__isnull=False).exists():
+    stats = get_sentiment_stats(user)
+    if not stats:
         return
 
-    total = comments.count()
-    positive = comments.filter(sentiment_label='positive').count()
-    neutral = comments.filter(sentiment_label='neutral').count()
-    negative = comments.filter(sentiment_label='negative').count()
-
-    avg = comments.aggregate(Avg('sentiment_score'))['sentiment_score__avg'] or 0.0
-
-    top_video = videos.order_by('-views').first()
+    top_video = Video.objects.filter(user=user).order_by('-views').first()
 
     AnalysisSnapshot.objects.create(
         user=user,
-        video_count=videos.count(),
-        total_comments=total,
-        avg_sentiment=round(avg, 4),
-        positive_percent=round((positive / total) * 100, 2) if total > 0 else 0,
-        neutral_percent=round((neutral / total) * 100, 2) if total > 0 else 0,
-        negative_percent=round((negative / total) * 100, 2) if total > 0 else 0,
+        video_count=stats['video_count'],
+        total_comments=stats['total_comments'],
+        avg_sentiment=stats['avg_score'],
+        positive_percent=stats['positive_percent'],
+        neutral_percent=stats['neutral_percent'],
+        negative_percent=stats['negative_percent'],
         top_video_id=top_video.youtube_video_id if top_video else None,
         top_video_title=top_video.title if top_video else None,
     )
@@ -734,12 +740,98 @@ def get_videos(request):
         return Response({'error': 'User not found'}, status=404)
     
     videos = Video.objects.filter(user=user).order_by('-published_at')
-    
+    sentiment = get_sentiment_stats(user) or {
+        'avg_score': 0,
+        'positive_percent': 0,
+        'neutral_percent': 0,
+        'negative_percent': 0,
+        'total_comments': 0,
+        'video_count': 0,
+    }
+
     return Response({
         'user': UserSerializer(user).data,
         'videos': VideoSerializer(videos, many=True).data,
         'count': videos.count(),
+        'sentiment': sentiment,
     })
+```
+
+### Get Comments View (Backend)
+
+```python
+@api_view(['GET'])
+@require_supabase_auth
+def get_comments(request, id):
+    try:
+        user = User.objects.get(email=request.user_payload['email'])
+    except User.DoesNotExist:
+        return Response({'error': 'User not found'}, status=404)
+    
+    comment = Comments.objects.filter(video__user=user, video__id=id).order_by('-published_at')
+    
+    return Response({
+        'comments': CommentSerializer(comment, many=True).data,
+        'count': comment.count(),
+    })
+```
+
+### topic Clustering View (Backend)
+
+```python
+def save_cluster(user):
+    new_clusters = cluster_video(user)
+    if not new_clusters:
+        return
+    
+    Video.objects.filter(user=user).update(cluster=None)  # clearing old cluster for videos before assigning new ones
+    
+    TopicCluster.objects.filter(user=user).delete()  # Clear old clusters before creating new ones  
+
+    # first group the new clusters with their respective labels
+    cluster_map = {}
+    for c in new_clusters:
+        label = c['cluster_label']
+        if label not in cluster_map:
+            cluster_map[label] = []
+        cluster_map[label].append(c['video'])
+    
+    # now creating cluster objects and assigning videos to them
+    for label, videos in cluster_map.items():
+        avg_views = sum(v.views for v in videos) / len(videos)
+        avg_engagement = sum(
+            (v.likes + v.comments_count) / v.views if v.views > 0 else 0
+            for v in videos
+        ) / len(videos)
+
+        cluster = TopicCluster.objects.create(
+            user=user,
+            cluster_label=label,
+            avg_views=round(avg_views, 2),
+            avg_engagement=round(avg_engagement, 2),
+        )
+
+        for video in videos:
+            video.cluster = cluster
+            video.save()
+```
+### Retrieving Clusters View (Backend)
+
+```python
+@api_view(['GET'])
+@require_supabase_auth
+def get_clusters(request):
+    try:
+        user = User.objects.get(email=request.user_payload['email'])
+    except User.DoesNotExist:
+        return Response({'error': 'User not found'}, status=404)
+    
+    clusters = TopicCluster.objects.filter(user=user)
+    
+    return Response({
+        'clusters': TopicClusterSerializer(clusters, many=True).data,
+    })
+
 ```
 
 ---

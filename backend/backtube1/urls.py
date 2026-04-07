@@ -6,6 +6,5 @@ urlpatterns = [
     path('fetch-videos/', fetch_videos),
     path('get-videos/', get_videos),
     path('fetch-comments/', fetch_comments),
-    path('get-comments/<int:id>/', get_comments),
     path('get-clusters/', get_clusters),
 ]
