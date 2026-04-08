@@ -15,7 +15,9 @@ A full-stack YouTube analytics tool that helps creators understand what content 
 7. [API Endpoints](#api-endpoints)
 8. [Authentication](#authentication)
 9. [YouTube Integration](#youtube-integration)
-10. [Project Structure](#project-structure)
+10. [Services](#services)
+11. [Views](#views)
+12. [Project Structure](#project-structure)
 
 ---
 
@@ -52,7 +54,8 @@ The platform uses sentiment analysis, embeddings, and clustering to provide acti
 - Display user profile info
 - List all fetched videos with thumbnails
 - View counts, likes, and comments for each video
-- Re-analyze channel button
+- Overall sentiment summary (% positive/neutral/negative, avg score)
+- Re-analyze channel button (refreshes videos, comments, embeddings, clusters)
 
 ### Sentiment Analysis
 - VADER sentiment analysis on top-level YouTube comments
@@ -62,10 +65,20 @@ The platform uses sentiment analysis, embeddings, and clustering to provide acti
 - Snapshot saved before each reanalysis for before/after comparison
 
 ### Video Clustering
-- *Coming soon*
+- OpenAI `text-embedding-3-small` generates 1536-dimension embeddings for each video title
+- Embeddings stored in pgvector field on Video model
+- K-means clustering (scikit-learn) groups videos by topic similarity
+- Silhouette score automatically selects optimal K (range: 2 to min(6, n-1))
+- Clusters store avg views and avg engagement for topic performance comparison
+- Clusters used behind-the-scenes for AI recommendations (not shown directly in UI)
+- `cluster_name` intentionally null — pending GPT-based naming in future
 
 ### Public Research Mode
-- *Coming soon*
+- Search any YouTube topic without login (no auth required)
+- Fetches 50 videos via YouTube Search API
+- Returns top 10 trending titles by views, engagement stats, and full video list
+- 7-day database cache to avoid redundant API calls (same query reuses cached results)
+- Cache key normalized to lowercase for consistency
 
 ---
 
@@ -95,9 +108,10 @@ The platform uses sentiment analysis, embeddings, and clustering to provide acti
 
 - Python 3.10+
 - Node.js 18+
-- Supabase account with project created
+- Supabase account with project created (pgvector extension enabled)
 - Google Cloud Console project with OAuth credentials
 - YouTube Data API v3 enabled
+- OpenAI API key with credits ($5 minimum)
 
 ### Backend Setup (Django)
 
@@ -160,6 +174,9 @@ DEBUG=True
 
 # YouTube
 YOUTUBE_API_KEY=your-youtube-api-key
+
+# OpenAI
+OPENAI_API_KEY=your-openai-api-key
 ```
 
 #### Frontend (.env.local)
@@ -258,7 +275,7 @@ class Comment(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 ```
 
-### Clusters model
+### TopicCluster Model
 
 ```python
 class TopicCluster(models.Model):
@@ -273,7 +290,7 @@ class TopicCluster(models.Model):
         return f"Cluster {self.cluster_label} for {self.user.email}"
 ```
 
-### Public mode
+### ResearchCache Model
 
 ```python
 class ResearchCache(models.Model):
@@ -285,6 +302,19 @@ class ResearchCache(models.Model):
         return f"Cache: {self.query}"
 ```
 
+### Field Mapping (Google → Django)
+
+| Django Field | Supabase Source |
+|--------------|-----------------|
+| `sub` | `user.user_metadata.sub` |
+| `email` | `user.email` |
+| `first_name` | `user.user_metadata.full_name` |
+| `email_verified` | `user.user_metadata.email_verified` |
+| `picture` | `user.user_metadata.picture` |
+| `username` | `user.email` |
+| `access_token` | `session.provider_token` |
+
+---
 
 ## API Endpoints
 
@@ -298,20 +328,29 @@ class ResearchCache(models.Model):
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| POST | `/api/fetch-videos/` | JWT | Fetch and store user's 30 latest YouTube videos |
-| GET | `/api/get-videos/` | JWT | Get user's stored videos and profile |
+| POST | `/api/fetch-videos/` | JWT | Fetch user's 30 videos, generate embeddings, run clustering |
+| GET | `/api/get-videos/` | JWT | Get user's videos, profile, and sentiment summary |
 
 ### Comment Endpoints
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
 | POST | `/api/fetch-comments/` | JWT | Fetch top 100 comments per video, run VADER sentiment, store in DB |
+| GET | `/api/get-comments/<id>/` | JWT | Get comments with sentiment scores for a specific video |
 
+### Cluster Endpoints
 
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| GET | `/api/get-clusters/` | JWT | Get topic clusters with nested videos |
+
+### Public Research Endpoints
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| POST | `/api/research/` | None | Search YouTube topic, returns trending titles + engagement stats (7-day cache) |
 
 ---
-
-
 
 ## Authentication
 
@@ -478,15 +517,30 @@ def sync_user(request):
 
 ### Flow
 
+**Creator Mode (Authenticated):**
+
 1. User logs in with Google (YouTube scope requested)
 2. Google access token saved to User model
 3. On first login (`is_analyzed=False`), `/api/fetch-videos/` auto-fetches 30 videos
-4. Old videos deleted, new ones created fresh
-5. `is_analyzed` set to `True` after first fetch
-6. `/api/fetch-comments/` fetches top 100 comments per video (public API, no auth token needed)
-7. VADER sentiment analysis runs on each comment during save
-8. Before reanalysis: current sentiment state saved to `AnalysisSnapshot`
-9. Re-analyze button triggers manual refresh of videos and comments
+4. Old videos deleted, new ones created fresh (cascade deletes comments)
+5. OpenAI embedding generated for each video title and stored in pgvector field
+6. K-means clustering groups videos by topic, saves to TopicCluster table
+7. `is_analyzed` set to `True` after first fetch
+8. `/api/fetch-comments/` fetches top 100 comments per video (public API, no auth token needed)
+9. VADER sentiment analysis runs on each comment during save
+10. Before reanalysis: current sentiment state saved to `AnalysisSnapshot` (only if comments exist)
+11. Re-analyze button triggers manual refresh of videos, comments, embeddings, and clusters
+
+**Public Research Mode (No Auth):**
+
+1. User submits a search query via `/api/research/`
+2. Backend checks `ResearchCache` for a matching query under 7 days old
+3. If cache hit → return cached results immediately (no API call)
+4. If cache miss → call YouTube Search API for 50 videos, fetch full details
+5. Calculate engagement stats (avg views, likes, engagement rate)
+6. Sort top 10 trending titles by view count
+7. Save full results to `ResearchCache` for future queries
+8. Return results to frontend
 
 ### YouTube API Endpoints Used
 
@@ -496,8 +550,10 @@ def sync_user(request):
 | `playlistItems().list()` | Get video IDs from uploads playlist | 1 unit |
 | `videos().list()` | Get video details (title, stats) | 1 unit |
 | `commentThreads().list()` | Get top-level comments per video | 1 unit |
+| `search().list()` | Search public videos by query (public mode) | 100 units |
 
-**Total per fetch:** ~32-33 units for 30 videos (10,000 daily limit)
+**Creator mode per fetch:** ~32-33 units for 30 videos (10,000 daily limit)
+**Public mode per search:** ~101 units (search + video details), cached for 7 days
 
 ### YouTube Service (Backend)
 
@@ -591,6 +647,12 @@ def get_video_comments(video_id, max_results=100):
     return comments
 ```
 
+---
+
+## Services
+
+All service functions live in `backtube1/services.py`. They handle external API calls, AI processing, and data transformation — keeping views clean.
+
 ### Sentiment Analysis Service (Backend)
 
 ```python
@@ -613,7 +675,142 @@ def analyze_comment_sentiment(text):
     return score, label
 ```
 
+### Sentiment Stats Helper (Backend)
+
+```python
+def get_sentiment_stats(user):
+    """Calculate overall sentiment breakdown for a user's comments"""
+    videos = Video.objects.filter(user=user)
+    comments = Comment.objects.filter(video__in=videos)
+    total = comments.count()
+
+    if total == 0:
+        return None
+
+    positive = comments.filter(sentiment_label='positive').count()
+    neutral = comments.filter(sentiment_label='neutral').count()
+    negative = comments.filter(sentiment_label='negative').count()
+    avg = comments.aggregate(Avg('sentiment_score'))['sentiment_score__avg'] or 0.0
+
+    return {
+        'video_count': videos.count(),
+        'total_comments': total,
+        'avg_score': round(avg, 4),
+        'positive_percent': round((positive / total) * 100, 2),
+        'neutral_percent': round((neutral / total) * 100, 2),
+        'negative_percent': round((negative / total) * 100, 2),
+    }
+```
+
+### Embedding Generation Service (Backend)
+
+```python
+# backtube1/services.py
+from openai import OpenAI
+
+openai_client = OpenAI(api_key=settings.OPENAI_API_KEY)
+
+def generate_embedding(title):
+    """Generate 1536-dimension embedding for a video title using OpenAI"""
+    response = openai_client.embeddings.create(
+        model="text-embedding-3-small",
+        input=title
+    )
+    return response.data[0].embedding
+```
+
+### Video Clustering Service (Backend)
+
+```python
+from sklearn.cluster import KMeans
+from sklearn.metrics import silhouette_score
+import numpy as np
+
+def cluster_videos(user):
+    """Run K-means on video title embeddings, auto-select optimal K via silhouette score"""
+    videos = Video.objects.filter(user=user, title_embedding__isnull=False)
+
+    if videos.count() < 3:
+        return []
+
+    embeddings = np.array([video.title_embedding for video in videos])
+
+    best_k = 2
+    best_score = -1
+    max_k = min(6, videos.count() - 1)
+
+    for k in range(2, max_k + 1):
+        kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
+        labels = kmeans.fit_predict(embeddings)
+        score = silhouette_score(embeddings, labels)
+        if score > best_score:
+            best_score = score
+            best_k = k
+
+    kmeans = KMeans(n_clusters=best_k, random_state=42, n_init=10)
+    labels = kmeans.fit_predict(embeddings)
+
+    results = []
+    for video, label in zip(videos, labels):
+        results.append({
+            'video': video,
+            'cluster_label': int(label),
+        })
+
+    return results
+```
+
+### Public Video Search Service (Backend)
+
+```python
+def search_public_videos(query, max_results=50):
+    """Search YouTube for public videos by query, return full details"""
+    youtube = get_youtube_service()
+
+    request = youtube.search().list(
+        part='id',
+        q=query,
+        type='video',
+        order='viewCount',
+        maxResults=max_results
+    )
+    response = request.execute()
+    video_ids = [item['id']['videoId'] for item in response.get('items', [])]
+
+    if not video_ids:
+        return []
+
+    request = youtube.videos().list(
+        part='snippet,statistics',
+        id=','.join(video_ids)
+    )
+    response = request.execute()
+
+    videos = []
+    for item in response.get('items', []):
+        videos.append({
+            'youtube_video_id': item['id'],
+            'title': item['snippet']['title'],
+            'description': item['snippet'].get('description', ''),
+            'thumbnail_url': item['snippet']['thumbnails'].get('high', {}).get('url'),
+            'published_at': item['snippet']['publishedAt'],
+            'views': int(item['statistics'].get('viewCount', 0)),
+            'likes': int(item['statistics'].get('likeCount', 0)),
+            'comments_count': int(item['statistics'].get('commentCount', 0)),
+        })
+
+    return videos
+```
+
+---
+
+## Views
+
+All views live in `backtube1/views.py`. Authenticated endpoints use the `@require_supabase_auth` decorator. Helper functions like `save_analysis_snapshot` and `save_cluster` are called from within views but don't have decorators themselves.
+
 ### Fetch Videos View (Backend)
+
+The main data pipeline for creator mode. Triggered on first login and manual re-analyze. Snapshots existing sentiment data before wiping, deletes all old videos (which cascades to comments), fetches 30 fresh videos from YouTube, generates an OpenAI embedding for each title, and runs K-means clustering to group them by topic.
 
 ```python
 @api_view(['POST'])
@@ -668,6 +865,8 @@ def fetch_videos(request):
 
 ### Fetch Comments View (Backend)
 
+Loops through all of a user's stored videos, fetches the top 100 top-level comments for each from YouTube's public API, and runs VADER sentiment analysis on every comment before saving. Uses delete-then-create pattern per video — old comments are wiped before new ones are stored.
+
 ```python
 @api_view(['POST'])
 @require_supabase_auth
@@ -707,6 +906,8 @@ def fetch_comments(request):
 
 ### Analysis Snapshot Helper (Backend)
 
+Called inside `fetch_videos` before deleting old data. Captures the current sentiment breakdown (% positive/neutral/negative, avg score, top video) so it can be compared after reanalysis. Only fires when comments already exist — skipped on first analysis since there's no "before" state to capture.
+
 ```python
 def save_analysis_snapshot(user):
     stats = get_sentiment_stats(user)
@@ -729,6 +930,8 @@ def save_analysis_snapshot(user):
 ```
 
 ### Get Videos View (Backend)
+
+The dashboard's main data source. Returns the user's profile, all stored videos sorted by publish date, and an overall sentiment summary calculated from all comments via the `get_sentiment_stats` helper. If no comments exist yet, returns zeroed-out sentiment stats.
 
 ```python
 @api_view(['GET'])
@@ -759,6 +962,8 @@ def get_videos(request):
 
 ### Get Comments View (Backend)
 
+Returns all comments for a specific video with their individual sentiment scores and labels. Used when a user clicks into a video's detail view to see the full comment breakdown. Takes the video's database ID as a URL parameter.
+
 ```python
 @api_view(['GET'])
 @require_supabase_auth
@@ -776,7 +981,9 @@ def get_comments(request, id):
     })
 ```
 
-### topic Clustering View (Backend)
+### Topic Clustering Helper (Backend)
+
+Called at the end of `fetch_videos` after all embeddings are generated. Runs `cluster_videos()` to get K-means assignments, clears old cluster data, groups videos by label, calculates per-cluster avg views and engagement rate, creates TopicCluster rows, and assigns each video its cluster FK.
 
 ```python
 def save_cluster(user):
@@ -817,6 +1024,8 @@ def save_cluster(user):
 ```
 ### Retrieving Clusters View (Backend)
 
+Returns all topic clusters for the authenticated user with their nested videos. Uses `TopicClusterSerializer` with a nested `VideoSerializer` so each cluster includes its full list of assigned videos. Currently used behind-the-scenes — will power AI recommendations in a future phase.
+
 ```python
 @api_view(['GET'])
 @require_supabase_auth
@@ -831,7 +1040,66 @@ def get_clusters(request):
     return Response({
         'clusters': TopicClusterSerializer(clusters, many=True).data,
     })
+```
 
+### Public Research View (Backend)
+
+The only unauthenticated endpoint. Takes a search query, checks the 7-day cache first — if a matching entry exists and is fresh, returns cached results immediately without hitting the YouTube API. Otherwise fetches 50 videos via YouTube Search, calculates engagement stats (avg views, likes, engagement rate), sorts the top 10 trending titles by view count, caches the full result set, and returns everything to the frontend.
+
+```python
+@api_view(['POST'])
+def public_research(request):
+    """Public endpoint — no auth required. Results cached for 7 days."""
+    query = request.data.get('query', '')
+    if not query:
+        return Response({'error': 'Query is required'}, status=400)
+
+    # Check cache first
+    cache = ResearchCache.objects.filter(query=query.lower()).first()
+    if cache and cache.created_at > timezone.now() - timedelta(days=7):
+        return Response(cache.results)
+
+    # No cache or expired — fetch fresh
+    videos = search_public_videos(query)
+    if not videos:
+        return Response({'error': 'No videos found'}, status=404)
+
+    top_10 = sorted(videos, key=lambda v: v['views'], reverse=True)[:10]
+
+    total = len(videos)
+    total_views = sum(v['views'] for v in videos)
+    total_likes = sum(v['likes'] for v in videos)
+    total_comments = sum(v['comments_count'] for v in videos)
+
+    avg_views = total_views / total
+    avg_likes = total_likes / total
+    avg_engagement = (total_likes / total_views * 100) if total_views > 0 else 0
+
+    results = {
+        'query': query,
+        'total_videos': total,
+        'videos': videos,
+        'trending_titles': [
+            {
+                'title': v['title'],
+                'views': v['views'],
+                'likes': v['likes'],
+                'comments_count': v['comments_count'],
+            } for v in top_10
+        ],
+        'engagement': {
+            'avg_views': round(avg_views),
+            'avg_likes': round(avg_likes),
+            'avg_engagement_percent': round(avg_engagement, 2),
+            'total_comments': total_comments,
+        },
+    }
+
+    # Save to cache
+    ResearchCache.objects.filter(query=query.lower()).delete()
+    ResearchCache.objects.create(query=query.lower(), results=results)
+
+    return Response(results)
 ```
 
 ---
@@ -846,10 +1114,10 @@ urtube/
 │   │   ├── urls.py
 │   │   └── wsgi.py
 │   ├── backtube1/
-│   │   ├── models.py        # User, Video, Comment, AnalysisSnapshot models
-│   │   ├── views.py         # API views (sync, fetch videos/comments, analytics)
-│   │   ├── services.py      # YouTube API + VADER sentiment analysis
-│   │   ├── serializers.py   # DRF serializers
+│   │   ├── models.py        # User, Video, Comment, AnalysisSnapshot, TopicCluster, ResearchCache
+│   │   ├── views.py         # API views (sync, fetch, analytics, public research)
+│   │   ├── services.py      # YouTube API, VADER sentiment, OpenAI embeddings, K-means clustering
+│   │   ├── serializers.py   # DRF serializers (User, Video, Comment, TopicCluster)
 │   │   ├── decorators.py    # JWT auth decorator
 │   │   └── urls.py
 │   ├── manage.py
@@ -858,9 +1126,11 @@ urtube/
 │
 ├── frontend/
 │   ├── app/
-│   │   ├── page.tsx         # Home page
+│   │   ├── page.tsx         # Home page (login/logout)
 │   │   ├── dashboard/
-│   │   │   └── page.tsx     # User dashboard with video list
+│   │   │   └── page.tsx     # Creator dashboard (videos, sentiment, re-analyze)
+│   │   ├── publicmode/
+│   │   │   └── page.tsx     # Public research page (search bar, results)
 │   │   └── auth/
 │   │       ├── callback/
 │   │       │   └── route.ts # OAuth callback handler
