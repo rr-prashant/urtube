@@ -2,7 +2,7 @@
 from .models import User, Video, Comments, AnalysisSnapshot, TopicCluster, ResearchCache
 from rest_framework.response import Response
 from rest_framework.decorators import api_view
-from backtube1.serializers import UserSerializer, VideoSerializer, CommentSerializer, TopicClusterSerializer
+from backtube1.serializers import UserSerializer, VideoSerializer, CommentSerializer, TopicClusterSerializer, AnalysisSnapshotSerializer
 from backtube1.decorators import require_supabase_auth
 from backtube1.services import generate_embedding, get_channel_videos, get_video_comments, sentiment_analyze, get_sentiment_stats, cluster_video, public_search_video
 from django.utils import timezone
@@ -96,9 +96,13 @@ def get_videos(request):
         'video_count': 0,
     }
 
+    best_videos = Video.objects.filter(user=user).order_by('-views')[:3]
+
+
     return Response({
         'user': UserSerializer(user).data,
         'videos': VideoSerializer(videos, many=True).data,
+        'best_videos': VideoSerializer(best_videos, many=True).data,
         'count': videos.count(),
         'sentiment': sentiment,
     })

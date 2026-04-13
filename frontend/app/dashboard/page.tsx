@@ -40,9 +40,11 @@ interface Cluster {
 }
 
 
+
 export default function Dashboard() {
   const [user, setUser] = useState<UserData | null>(null)
   const [videos, setVideos] = useState<Video[]>([])
+  const [bestVideos, setBestVideos] = useState<Video[]>([])
   const [loading, setLoading] = useState(true)
   const [sentiment, setSentiment] = useState<Sentiment | null>(null)
   const [clusters, setClusters] = useState<Cluster[]>([])
@@ -126,6 +128,7 @@ export default function Dashboard() {
       setSentiment(data.sentiment)
       setUser(data.user)
       setVideos(data.videos)
+      setBestVideos(data.best_videos)
       setLoading(false)
     }
 
@@ -171,6 +174,7 @@ export default function Dashboard() {
     setSentiment(data.sentiment)
     setUser(data.user)
     setVideos(data.videos)
+    setBestVideos(data.best_videos)
     setLoading(false)
   }
 
@@ -195,6 +199,21 @@ export default function Dashboard() {
           <p>Positive: {sentiment.positive_percent}%</p>
           <p>Neutral: {sentiment.neutral_percent}%</p>
           <p>Negative: {sentiment.negative_percent}%</p>
+        </div>
+      )}
+
+      
+
+      {bestVideos && bestVideos.length > 0 && (
+        <div>
+          <h2>Top Performing Videos</h2>
+          <ol>
+            {bestVideos.map((video: Video) => (
+              <li key={video.youtube_video_id}>
+                {video.title} — {video.views} views
+              </li>
+            ))}
+          </ol>
         </div>
       )}
 
