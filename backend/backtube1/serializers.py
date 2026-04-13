@@ -1,6 +1,6 @@
 
 from rest_framework import serializers
-from .models import User, Video, Comments, TopicCluster
+from .models import User, Video, Comments, TopicCluster, AnalysisSnapshot
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -36,6 +36,19 @@ class CommentSerializer(serializers.ModelSerializer):
             'published_at',
             'sentiment_score',
             'sentiment_label',
+        ]
+
+class AnalysisSnapshotSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AnalysisSnapshot
+        fields = [
+            'avg_sentiment',
+            'positive_percent',
+            'neutral_percent',
+            'negative_percent',
+            'total_comments',
+            'top_video_title',
+            'created_at',
         ]
 
 class TopicClusterSerializer(serializers.ModelSerializer):

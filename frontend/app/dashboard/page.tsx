@@ -39,6 +39,15 @@ interface Cluster {
   videos: Video[]
 }
 
+interface Snapshot {
+  avg_sentiment: number
+  positive_percent: number
+  neutral_percent: number
+  negative_percent: number
+  total_comments: number
+  top_video_title: string | null
+  created_at: string
+}
 
 
 export default function Dashboard() {
@@ -48,6 +57,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [sentiment, setSentiment] = useState<Sentiment | null>(null)
   const [clusters, setClusters] = useState<Cluster[]>([])
+  const [snapshots, setSnapshot] = useState<Snapshot[]>([])
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -129,6 +139,7 @@ export default function Dashboard() {
       setUser(data.user)
       setVideos(data.videos)
       setBestVideos(data.best_videos)
+      setSnapshot(data.snapshots || [])
       setLoading(false)
     }
 
@@ -175,6 +186,7 @@ export default function Dashboard() {
     setUser(data.user)
     setVideos(data.videos)
     setBestVideos(data.best_videos)
+    setSnapshot(data.snapshots || [])
     setLoading(false)
   }
 
@@ -202,8 +214,41 @@ export default function Dashboard() {
         </div>
       )}
 
-      
-
+        {snapshots.length > 0 ? (
+          <div>
+            <h2>Previous Analyses</h2>
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Date</th>
+                  <th>Positive</th>
+                  <th>Neutral</th>
+                  <th>Negative</th>
+                  <th>Avg Score</th>
+                  <th>Comments</th>
+                  <th>Top Video</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[...snapshots].reverse().map((snap, i) => (
+                  <tr key={i}>
+                    <td>{i + 1}</td>
+                    <td>{new Date(snap.created_at).toLocaleDateString()}</td>
+                    <td>{snap.positive_percent}%</td>
+                    <td>{snap.neutral_percent}%</td>
+                    <td>{snap.negative_percent}%</td>
+                    <td>{snap.avg_sentiment}</td>
+                    <td>{snap.total_comments}</td>
+                    <td>{snap.top_video_title || '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p>No previous analyses yet. Re-analyze to start tracking changes.</p>
+        )}
       {bestVideos && bestVideos.length > 0 && (
         <div>
           <h2>Top Performing Videos</h2>

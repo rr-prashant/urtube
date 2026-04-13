@@ -97,12 +97,14 @@ def get_videos(request):
     }
 
     best_videos = Video.objects.filter(user=user).order_by('-views')[:3]
+    snapshots = AnalysisSnapshot.objects.filter(user=user)
 
 
     return Response({
         'user': UserSerializer(user).data,
         'videos': VideoSerializer(videos, many=True).data,
         'best_videos': VideoSerializer(best_videos, many=True).data,
+        'snapshots': AnalysisSnapshotSerializer(snapshots, many=True).data,
         'count': videos.count(),
         'sentiment': sentiment,
     })
