@@ -58,6 +58,7 @@ export default function Dashboard() {
   const [sentiment, setSentiment] = useState<Sentiment | null>(null)
   const [clusters, setClusters] = useState<Cluster[]>([])
   const [snapshots, setSnapshot] = useState<Snapshot[]>([])
+  const [activeTab, setActiveTab] = useState<string>('all')
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -262,40 +263,40 @@ export default function Dashboard() {
         </div>
       )}
 
-      {clusters.length > 0 && (
+      <div>
+        <h2>Videos</h2>
         <div>
-          <h2>Topic Clusters</h2>
+          <button onClick={() => setActiveTab('all')} style={{ fontWeight: activeTab === 'all' ? 'bold' : 'normal' }}>
+            All ({videos.length})
+          </button>
           {clusters.map((cluster) => (
-            <div key={cluster.id}>
-              <h3>{cluster.cluster_name || `Cluster ${cluster.cluster_label}`}</h3>
-              <p>Avg Views: {Math.round(cluster.avg_views)} | Avg Engagement: {(cluster.avg_engagement * 100).toFixed(2)}%</p>
-              <ul>
-                {cluster.videos.map((video) => (
-                  <li key={video.youtube_video_id}>{video.title}</li>
-                ))}
-              </ul>
-            </div>
+            <button
+              key={cluster.id}
+              onClick={() => setActiveTab(String(cluster.cluster_label))}
+              style={{ fontWeight: activeTab === String(cluster.cluster_label) ? 'bold' : 'normal' }}
+            >
+              Cluster {cluster.cluster_label} ({cluster.videos.length})
+            </button>
           ))}
         </div>
-      )}
-
-      <div>
-        <h2>Videos ({videos.length})</h2>
-        <button onClick={handleReanalyze}>Re-analyze Channel</button>
+        <ul>
+          {(activeTab === 'all'
+            ? videos
+            : clusters.find(c => String(c.cluster_label) === activeTab)?.videos || []
+          ).map((video) => (
+            <li key={video.youtube_video_id}>
+              <img src={video.thumbnail_url} alt={video.title} width={120} />
+              <div>
+                <strong>{video.title}</strong>
+                <p>Views: {video.views} | Likes: {video.likes} | Comments: {video.comments_count}</p>
+                <p>Published: {new Date(video.published_at).toLocaleDateString()}</p>
+              </div>
+            </li>
+          ))}
+        </ul>
       </div>
 
-      <ul>
-        {videos.map((video) => (
-          <li key={video.youtube_video_id}>
-            <img src={video.thumbnail_url} alt={video.title} width={120} />
-            <div>
-              <strong>{video.title}</strong>
-              <p>Views: {video.views} | Likes: {video.likes} | Comments: {video.comments_count}</p>
-              <p>Published: {new Date(video.published_at).toLocaleDateString()}</p>
-            </div>
-          </li>
-        ))}
-      </ul>
+      
     </div>
   )
 }
