@@ -7,6 +7,10 @@ from openai import OpenAI
 from sklearn.cluster import KMeans
 import numpy as np
 from sklearn.metrics import silhouette_score
+import json
+
+#OpenAI Client Initialization
+openai_client = OpenAI(api_key=settings.OPENAI_API_KEY)
 
 # Getting Video Data from YouTube API
 def get_youtube_service(access_token=None):
@@ -177,7 +181,6 @@ def get_sentiment_stats(user):
 
 
 # embedding generation
-openai_client = OpenAI(api_key=settings.OPENAI_API_KEY)
 def generate_embedding(title):
     response = openai_client.embeddings.create(
         model="text-embedding-3-small",
@@ -266,3 +269,19 @@ def public_search_video(query,max_results=50):
         })
     
     return videos
+
+# GPT helper function
+def ai_generate(prompt):
+    try:
+        response = openai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role" : "user","content" : prompt}
+            ],
+            temperature=0.7 
+        ).choices[0].message.content
+
+        return json.loads(response)
+    except:
+        return {}
+    
