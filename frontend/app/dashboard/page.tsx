@@ -72,7 +72,7 @@ export default function Dashboard() {
         setLoading(false)
         return
       }
-
+      
       const { data: { user: authUser } } = await supabase.auth.getUser()
 
       // Sync user first

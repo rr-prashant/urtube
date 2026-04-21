@@ -4,9 +4,11 @@ from rest_framework.response import Response
 from rest_framework.decorators import api_view
 from backtube1.serializers import UserSerializer, VideoSerializer, CommentSerializer, TopicClusterSerializer, AnalysisSnapshotSerializer
 from backtube1.decorators import require_supabase_auth
-from backtube1.services import generate_embedding, get_channel_videos, get_video_comments, sentiment_analyze, get_sentiment_stats, cluster_video, public_search_video
+from backtube1.services import generate_embedding, get_channel_videos, get_video_comments, sentiment_analyze, get_sentiment_stats, cluster_video, public_search_video, ai_generate
 from django.utils import timezone
 from datetime import timedelta
+from backtube1.prompts import VIDEO_INSIGHTS_PROMPT
+from django.db.models import Avg
 
 # this helps to create user linking with the frontend
 @api_view(["POST"])
@@ -296,3 +298,48 @@ def public_research(request):
     ResearchCache.objects.create(query=query.lower(), results=results)
 
     return Response(results)
+
+
+@api_view(['POST'])
+@require_supabase_auth
+def video_insights(request, id):
+    try:
+        user = User.objects.get(email=request.user_payload['email'])
+    except User.DoesNotExist:
+        return Response({'error': 'User not found'}, status=404)
+    
+    try:
+        video = Video.objects.get(id=id, user=user)
+    except Video.DoesNotExist:
+        return Response({'error': 'Video not found'}, status=404)
+    
+    comments = Comments.objects.filter(video=video)
+    total = comments.count()
+
+    if total > 0:
+        positive = comments.filter(sentiment_label='positive').count()
+        neutral = comments.filter(sentiment_label='neutral').count()
+        negative = comments.filter(sentiment_label='negative').count()
+        avg_score = comments.aggregate(Avg('sentiment_score'))['sentiment_score__avg'] or 0
+    else:
+        positive, neutral, negative, avg_score = 0, 0, 0, 0
+
+    # User's average views for comparison
+    avg_views = Video.objects.filter(user=user).aggregate(Avg('views'))['views__avg'] or 0
+
+    prompt = VIDEO_INSIGHTS_PROMPT.format(
+        title=video.title,
+        description=video.description or '',
+        views=video.views,
+        likes=video.likes,
+        comments_count=video.comments_count,
+        sentiment_score=round(avg_score, 4),
+        positive_percent=round((positive / total) * 100, 2) if total > 0 else 0,
+        neutral_percent=round((neutral / total) * 100, 2) if total > 0 else 0,
+        negative_percent=round((negative / total) * 100, 2) if total > 0 else 0,
+        avg_views=round(avg_views),
+    )
+
+    result = ai_generate(prompt)
+
+    return Response(result)
