@@ -8,6 +8,8 @@ from sklearn.cluster import KMeans
 import numpy as np
 from sklearn.metrics import silhouette_score
 import json
+from backtube1.prompts import CLUSTER_NAMING_PROMPT
+
 
 #OpenAI Client Initialization
 openai_client = OpenAI(api_key=settings.OPENAI_API_KEY)
@@ -284,4 +286,18 @@ def ai_generate(prompt):
         return json.loads(response)
     except:
         return {}
-    
+
+
+# Cluster naming with AI
+def name_cluster(cluster_title):
+    prompt = CLUSTER_NAMING_PROMPT.format(
+        titles = "\n".join(cluster_title)
+        )
+    response = openai_client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role" : "user","content" : prompt}
+        ],
+        temperature=0.7 
+    ).choices[0].message.content.strip()
+    return response

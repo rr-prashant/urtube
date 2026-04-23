@@ -72,7 +72,7 @@ export default function Dashboard() {
         setLoading(false)
         return
       }
-      
+
       const { data: { user: authUser } } = await supabase.auth.getUser()
 
       // Sync user first
@@ -197,7 +197,7 @@ export default function Dashboard() {
   return (
     <div>
       <h1>Dashboard</h1>
-      
+      <button onClick={handleReanalyze}>Re-analyze Channel</button>
       <div>
         <h2>User Info</h2>
         <p>Name: {user?.first_name}</p>
@@ -275,7 +275,7 @@ export default function Dashboard() {
               onClick={() => setActiveTab(String(cluster.cluster_label))}
               style={{ fontWeight: activeTab === String(cluster.cluster_label) ? 'bold' : 'normal' }}
             >
-              Cluster {cluster.cluster_label} ({cluster.videos.length})
+              {cluster.cluster_name || `Cluster ${cluster.cluster_label}`} ({cluster.videos.length})
             </button>
           ))}
         </div>

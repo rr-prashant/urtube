@@ -4,7 +4,7 @@ from rest_framework.response import Response
 from rest_framework.decorators import api_view
 from backtube1.serializers import UserSerializer, VideoSerializer, CommentSerializer, TopicClusterSerializer, AnalysisSnapshotSerializer
 from backtube1.decorators import require_supabase_auth
-from backtube1.services import generate_embedding, get_channel_videos, get_video_comments, sentiment_analyze, get_sentiment_stats, cluster_video, public_search_video, ai_generate
+from backtube1.services import generate_embedding, get_channel_videos, get_video_comments, sentiment_analyze, get_sentiment_stats, cluster_video, public_search_video, ai_generate, name_cluster
 from django.utils import timezone
 from datetime import timedelta
 from backtube1.prompts import VIDEO_INSIGHTS_PROMPT
@@ -216,6 +216,11 @@ def save_cluster(user):
             avg_views=round(avg_views, 2),
             avg_engagement=round(avg_engagement, 2),
         )
+
+        # giving clusters title with AI
+        video_titles = [v.title for v in videos]
+        cluster.cluster_name = name_cluster(video_titles)
+        cluster.save()
 
         for video in videos:
             video.cluster = cluster
