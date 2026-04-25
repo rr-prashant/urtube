@@ -1,5 +1,5 @@
 from django.urls import path, include
-from .views import fetch_comments, sync_user, fetch_videos, get_videos, get_comments, get_clusters, public_research, video_insights
+from .views import fetch_comments, sync_user, fetch_videos, get_videos, get_comments, get_clusters, public_research, video_insights, channel_recommendation
 
 urlpatterns = [
     path('sync-user/', sync_user),
@@ -9,4 +9,5 @@ urlpatterns = [
     path('get-clusters/', get_clusters),
     path('research/', public_research),
     path('videos/<int:id>/insights/', video_insights),
+    path('recommendations/', channel_recommendation),
 ]

@@ -7,7 +7,7 @@ from backtube1.decorators import require_supabase_auth
 from backtube1.services import generate_embedding, get_channel_videos, get_video_comments, sentiment_analyze, get_sentiment_stats, cluster_video, public_search_video, ai_generate, name_cluster
 from django.utils import timezone
 from datetime import timedelta
-from backtube1.prompts import VIDEO_INSIGHTS_PROMPT
+from backtube1.prompts import VIDEO_INSIGHTS_PROMPT, RECOMMENDATIONS_PROMPT
 from django.db.models import Avg
 
 # this helps to create user linking with the frontend
@@ -348,3 +348,51 @@ def video_insights(request, id):
     result = ai_generate(prompt)
 
     return Response(result)
+
+
+@api_view(['POST'])
+@require_supabase_auth
+def channel_recommendation(request):
+    try:
+        user = User.objects.get(email=request.user_payload['email'])
+    except User.DoesNotExist:
+        return Response({'error': 'User not found'}, status=404)
+    
+
+    clusters = TopicCluster.objects.filter(user=user)
+    if not clusters.exists():   
+        return Response({'error': 'No clusters found for user. Please sync videos first.'}, status=404)
+
+
+    cluster_data = ""
+    for cluster in clusters:
+        titles = [v.title for v in cluster.videos.all()]
+        cluster_data += f"\n{cluster.cluster_name or f'Cluster {cluster.cluster_llabel}'}:\n"
+        cluster_data += "\n".join(f" - {t}" for t in titles)
+        cluster_data += "\n"
+
+    # best and worst performing topics
+    best_cluster = clusters.order_by('-avg_views').first()
+    worst_cluster = clusters.order_by('avg_views').first()
+
+    sentiment = get_sentiment_stats(user) 
+    total_videos = Video.objects.filter(user=user).count()
+
+    prompt = RECOMMENDATIONS_PROMPT.format(
+        cluster_data=cluster_data,
+        best_cluster_name=best_cluster.cluster_name or f'Cluster {best_cluster.cluster_label}',
+        best_cluster_views=round(best_cluster.avg_views),
+        best_cluster_engagement=round(best_cluster.avg_engagement * 100, 2),
+        worst_cluster_name=worst_cluster.cluster_name or f'Cluster {worst_cluster.cluster_label}',
+        worst_cluster_views=round(worst_cluster.avg_views),
+        worst_cluster_engagement=round(worst_cluster.avg_engagement * 100, 2),
+        total_videos=total_videos,
+        avg_sentiment=sentiment['avg_score'] if sentiment else 0,
+    )
+
+
+    result = ai_generate(prompt)
+
+    return Response({
+        'recommendations': result,
+    })
