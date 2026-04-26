@@ -49,6 +49,11 @@ interface Snapshot {
   created_at: string
 }
 
+interface VideoInsight {
+  what_worked: string
+  improve: string
+  next_idea: string
+}
 
 export default function Dashboard() {
   const [user, setUser] = useState<UserData | null>(null)
@@ -61,6 +66,12 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<string>('all')
   const [error, setError] = useState('')
 
+  // for video insights
+  const [selectedVideoId, setSelectedVideoId] = useState<number | null>(null)
+  const [insights, setInsights] = useState<VideoInsight | null>(null)
+  const [insightsLoading, setInsightsLoading] = useState(false)
+
+
   useEffect(() => {
     async function initDashboard() {
       const supabase = createClient()
@@ -72,7 +83,7 @@ export default function Dashboard() {
         setLoading(false)
         return
       }
-
+      
       const { data: { user: authUser } } = await supabase.auth.getUser()
 
       // Sync user first
@@ -147,6 +158,7 @@ export default function Dashboard() {
     initDashboard()
   }, [])
 
+
   async function handleReanalyze() {
     setLoading(true)
     const supabase = createClient()
@@ -189,6 +201,21 @@ export default function Dashboard() {
     setBestVideos(data.best_videos)
     setSnapshot(data.snapshots || [])
     setLoading(false)
+  }
+
+  async function fetchInsights(videoId: number) {
+    setSelectedVideoId(videoId)
+    setInsightsLoading(true)
+    const supabase = createClient()
+    const { data: { session } } = await supabase.auth.getSession()
+
+    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/videos/${videoId}/insights/`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${session?.access_token}` }
+    })
+    const data = await response.json()
+    setInsights(data)
+    setInsightsLoading(false)
   }
 
   if (loading) return <p>Loading...</p>
@@ -286,10 +313,20 @@ export default function Dashboard() {
           ).map((video) => (
             <li key={video.youtube_video_id}>
               <img src={video.thumbnail_url} alt={video.title} width={120} />
+                
               <div>
                 <strong>{video.title}</strong>
                 <p>Views: {video.views} | Likes: {video.likes} | Comments: {video.comments_count}</p>
                 <p>Published: {new Date(video.published_at).toLocaleDateString()}</p>
+                 <button onClick={() => fetchInsights(video.id)}>Get AI Insights</button>
+                  {selectedVideoId === video.id && insightsLoading && <p>Analyzing...</p>}
+                  {selectedVideoId === video.id && insights && !insightsLoading && (
+                    <div>
+                      <p><strong>What Worked:</strong> {insights.what_worked}</p>
+                      <p><strong>Improve:</strong> {insights.improve}</p>
+                      <p><strong>Next Idea:</strong> {insights.next_idea}</p>
+                    </div>
+                  )}
               </div>
             </li>
           ))}
