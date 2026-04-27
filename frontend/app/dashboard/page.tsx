@@ -55,6 +55,17 @@ interface VideoInsight {
   next_idea: string
 }
 
+interface Recommendation {
+  title: string
+  reason: string
+}
+
+interface ChannelRecom{
+  channel_analysis: string
+  top_tip: string
+  recommendations: Recommendation[]
+}
+
 export default function Dashboard() {
   const [user, setUser] = useState<UserData | null>(null)
   const [videos, setVideos] = useState<Video[]>([])
@@ -71,6 +82,9 @@ export default function Dashboard() {
   const [insights, setInsights] = useState<VideoInsight | null>(null)
   const [insightsLoading, setInsightsLoading] = useState(false)
 
+  // for AI channel recommendations
+  const [channelRecommend, setChannelRecommend] = useState<ChannelRecom | null>(null)
+  const [recommendLoading, setRecommendLoading] = useState(false)
 
   useEffect(() => {
     async function initDashboard() {
@@ -218,6 +232,20 @@ export default function Dashboard() {
     setInsightsLoading(false)
   }
 
+  async function fetchRecom() {
+    setRecommendLoading(true)
+    const supabase = createClient()
+    const { data: { session } } = await supabase.auth.getSession()
+
+    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/recom/`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${session?.access_token}` }
+    })
+    const data = await response.json()
+    setChannelRecommend(data.recommendations)
+    setRecommendLoading(false)
+  }
+
   if (loading) return <p>Loading...</p>
   if (error) return <p>Error: {error}</p>
 
@@ -332,8 +360,31 @@ export default function Dashboard() {
           ))}
         </ul>
       </div>
-
-      
+    // AI Channel Recommendations
+    <div>
+      <h2>AI Recommendations</h2>
+      <button onClick={fetchRecom} disabled={recommendLoading}>
+        {recommendLoading ? 'Generating...' : 'Get AI Recommendations'}
+      </button>
+      {channelRecommend && (
+        <div>
+          <h3>Channel Analysis</h3>
+          <p>{channelRecommend.channel_analysis}</p>
+          <h3>Top Tip</h3>
+          <p>{channelRecommend.top_tip}</p>
+          <h3>Content Ideas</h3>
+          <ol>
+            {channelRecommend.recommendations.map((rec, i) => (
+              <li key={i}>
+                <strong>{rec.title}</strong>
+                <p>{rec.reason}</p>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+    </div>
+          
     </div>
   )
 }

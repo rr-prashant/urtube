@@ -9,5 +9,5 @@ urlpatterns = [
     path('get-clusters/', get_clusters),
     path('research/', public_research),
     path('videos/<int:id>/insights/', video_insights),
-    path('recommendations/', channel_recommendation),
+    path('recom/', channel_recommendation),
 ]
