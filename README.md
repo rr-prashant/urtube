@@ -55,7 +55,24 @@ The platform uses sentiment analysis, embeddings, and clustering to provide acti
 - List all fetched videos with thumbnails
 - View counts, likes, and comments for each video
 - Overall sentiment summary (% positive/neutral/negative, avg score)
+- Top 3 performing videos by views
+- Video cluster tabs (All / topic-named clusters) for categorized browsing
+- Previous analyses history table (snapshot comparison across re-analyses)
+- Per-video AI Insights button (what worked, what to improve, next idea)
+- AI Recommendations section (channel analysis, top tip, 5 content ideas)
 - Re-analyze channel button (refreshes videos, comments, embeddings, clusters)
+
+### AI Insights
+- GPT-4o-mini analyzes individual video performance
+- Takes video stats, sentiment data, and user's average views as context
+- Returns structured analysis: what worked, what to improve, next content idea
+- Triggered on-demand per video (not cached — fresh analysis each time)
+
+### AI Recommendations
+- GPT-4o-mini generates channel-wide content strategy
+- Uses cluster performance data (best/worst performing topics)
+- Returns: channel analysis, top actionable tip, and 5 specific video ideas with reasoning
+- Triggered on-demand from dashboard
 
 ### Sentiment Analysis
 - VADER sentiment analysis on top-level YouTube comments
@@ -70,8 +87,8 @@ The platform uses sentiment analysis, embeddings, and clustering to provide acti
 - K-means clustering (scikit-learn) groups videos by topic similarity
 - Silhouette score automatically selects optimal K (range: 2 to min(6, n-1))
 - Clusters store avg views and avg engagement for topic performance comparison
-- Clusters used behind-the-scenes for AI recommendations (not shown directly in UI)
-- `cluster_name` intentionally null — pending GPT-based naming in future
+- GPT-4o-mini auto-names each cluster based on video titles (e.g., "Gaming Walkthroughs")
+- Dashboard displays videos organized by cluster tabs
 
 ### Public Research Mode
 - Search any YouTube topic without login (no auth required)
@@ -91,7 +108,7 @@ The platform uses sentiment analysis, embeddings, and clustering to provide acti
 | **Database** | Supabase (PostgreSQL) |
 | **Authentication** | Supabase Auth (Google OAuth) |
 | **YouTube API** | YouTube Data API v3 |
-| **AI/ML** | OpenAI API, VADER Sentiment, scikit-learn |
+| **AI/ML** | OpenAI API (text-embedding-3-small, gpt-4o-mini), VADER Sentiment, scikit-learn |
 | **Deployment** | Vercel (frontend), Railway (backend) |
 
 ---
@@ -344,6 +361,13 @@ class ResearchCache(models.Model):
 |--------|----------|------|-------------|
 | GET | `/api/get-clusters/` | JWT | Get topic clusters with nested videos |
 
+### AI Endpoints
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| POST | `/api/videos/<id>/insights/` | JWT | GPT analysis of a single video (what worked, improve, next idea) |
+| POST | `/api/recom/` | JWT | GPT channel recommendations (analysis, tip, 5 content ideas) |
+
 ### Public Research Endpoints
 
 | Method | Endpoint | Auth | Description |
@@ -525,11 +549,14 @@ def sync_user(request):
 4. Old videos deleted, new ones created fresh (cascade deletes comments)
 5. OpenAI embedding generated for each video title and stored in pgvector field
 6. K-means clustering groups videos by topic, saves to TopicCluster table
-7. `is_analyzed` set to `True` after first fetch
-8. `/api/fetch-comments/` fetches top 100 comments per video (public API, no auth token needed)
-9. VADER sentiment analysis runs on each comment during save
-10. Before reanalysis: current sentiment state saved to `AnalysisSnapshot` (only if comments exist)
-11. Re-analyze button triggers manual refresh of videos, comments, embeddings, and clusters
+7. GPT-4o-mini auto-names each cluster based on its video titles
+8. `is_analyzed` set to `True` after first fetch
+9. `/api/fetch-comments/` fetches top 100 comments per video (public API, no auth token needed)
+10. VADER sentiment analysis runs on each comment during save
+11. Before reanalysis: current sentiment state saved to `AnalysisSnapshot` (only if comments exist)
+12. Re-analyze button triggers manual refresh of videos, comments, embeddings, and clusters
+13. User can request per-video AI insights (GPT analyzes individual video performance)
+14. User can request channel-wide AI recommendations (GPT suggests content strategy based on clusters)
 
 **Public Research Mode (No Auth):**
 
@@ -802,6 +829,106 @@ def search_public_videos(query, max_results=50):
     return videos
 ```
 
+### GPT Helper Service (Backend)
+
+Generic function for all GPT-powered features. Sends a prompt to `gpt-4o-mini`, parses the JSON response. Used by video insights, recommendations, and cluster naming.
+
+```python
+import json
+
+def ai_generate(prompt):
+    """Send prompt to GPT-4o-mini, return parsed JSON response"""
+    try:
+        response = openai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.7
+        ).choices[0].message.content
+
+        return json.loads(response)
+    except:
+        return {}
+```
+
+### Cluster Naming Service (Backend)
+
+Called during cluster creation. Sends each cluster's video titles to GPT and returns a short descriptive name (2-4 words). Uses a separate function from `ai_generate` because the response is plain text, not JSON.
+
+```python
+def name_cluster(video_titles):
+    """Generate a short topic name for a cluster based on its video titles"""
+    prompt = CLUSTER_NAMING_PROMPT.format(titles="\n".join(video_titles))
+    response = openai_client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.7
+    ).choices[0].message.content
+    return response.strip()
+```
+
+### GPT Prompt Templates (Backend)
+
+All prompts live in `backtube1/prompts.py`. Each uses `{placeholders}` filled at call time via `.format()`.
+
+```python
+# backtube1/prompts.py
+
+CLUSTER_NAMING_PROMPT = """You are a YouTube content analyst. 
+Given these video titles that belong to the same topic group, give this group a short descriptive name (2-4 words max).
+
+Video titles:
+{titles}
+
+Respond with ONLY the topic name, nothing else."""
+
+
+VIDEO_INSIGHTS_PROMPT = """You are a YouTube growth strategist analyzing a single video's performance.
+
+Video Title: {title}
+Description: {description}
+Views: {views}
+Likes: {likes}
+Comments: {comments_count}
+Sentiment Score: {sentiment_score} (scale: -1 to +1)
+Sentiment Breakdown: {positive_percent}% positive, {neutral_percent}% neutral, {negative_percent}% negative
+User's Average Views: {avg_views}
+
+Respond in this exact JSON format and nothing else:
+{{
+    "what_worked": "...",
+    "improve": "...",
+    "next_idea": "..."
+}}"""
+
+
+RECOMMENDATIONS_PROMPT = """You are a YouTube growth strategist. Analyze this creator's channel data and suggest new content ideas.
+
+Creator's Video Titles (grouped by topic):
+{cluster_data}
+
+Best Performing Topic: {best_cluster_name} (avg {best_cluster_views} views, {best_cluster_engagement}% engagement)
+Worst Performing Topic: {worst_cluster_name} (avg {worst_cluster_views} views, {worst_cluster_engagement}% engagement)
+
+Overall Channel Stats:
+Total Videos: {total_videos}
+Average Sentiment: {avg_sentiment}
+
+Respond in this exact JSON format and nothing else:
+{{
+    "channel_analysis": "...",
+    "top_tip": "...",
+    "recommendations": [
+        {{"title": "...", "reason": "..."}},
+        {{"title": "...", "reason": "..."}},
+        {{"title": "...", "reason": "..."}},
+        {{"title": "...", "reason": "..."}},
+        {{"title": "...", "reason": "..."}}
+    ]
+}}"""
+```
+
 ---
 
 ## Views
@@ -931,7 +1058,7 @@ def save_analysis_snapshot(user):
 
 ### Get Videos View (Backend)
 
-The dashboard's main data source. Returns the user's profile, all stored videos sorted by publish date, and an overall sentiment summary calculated from all comments via the `get_sentiment_stats` helper. If no comments exist yet, returns zeroed-out sentiment stats.
+The dashboard's main data source. Returns the user's profile, all stored videos sorted by publish date, top 3 performing videos, overall sentiment summary, and all previous analysis snapshots for comparison.
 
 ```python
 @api_view(['GET'])
@@ -943,6 +1070,8 @@ def get_videos(request):
         return Response({'error': 'User not found'}, status=404)
     
     videos = Video.objects.filter(user=user).order_by('-published_at')
+    best_videos = Video.objects.filter(user=user).order_by('-views')[:3]
+    snapshots = AnalysisSnapshot.objects.filter(user=user)
     sentiment = get_sentiment_stats(user) or {
         'avg_score': 0,
         'positive_percent': 0,
@@ -955,6 +1084,8 @@ def get_videos(request):
     return Response({
         'user': UserSerializer(user).data,
         'videos': VideoSerializer(videos, many=True).data,
+        'best_videos': VideoSerializer(best_videos, many=True).data,
+        'snapshots': AnalysisSnapshotSerializer(snapshots, many=True).data,
         'count': videos.count(),
         'sentiment': sentiment,
     })
@@ -983,7 +1114,7 @@ def get_comments(request, id):
 
 ### Topic Clustering Helper (Backend)
 
-Called at the end of `fetch_videos` after all embeddings are generated. Runs `cluster_videos()` to get K-means assignments, clears old cluster data, groups videos by label, calculates per-cluster avg views and engagement rate, creates TopicCluster rows, and assigns each video its cluster FK.
+Called at the end of `fetch_videos` after all embeddings are generated. Runs `cluster_videos()` to get K-means assignments, clears old cluster data, groups videos by label, calculates per-cluster avg views and engagement rate, creates TopicCluster rows, names each cluster via GPT, and assigns each video its cluster FK.
 
 ```python
 def save_cluster(user):
@@ -991,11 +1122,9 @@ def save_cluster(user):
     if not new_clusters:
         return
     
-    Video.objects.filter(user=user).update(cluster=None)  # clearing old cluster for videos before assigning new ones
-    
-    TopicCluster.objects.filter(user=user).delete()  # Clear old clusters before creating new ones  
+    Video.objects.filter(user=user).update(cluster=None)
+    TopicCluster.objects.filter(user=user).delete()
 
-    # first group the new clusters with their respective labels
     cluster_map = {}
     for c in new_clusters:
         label = c['cluster_label']
@@ -1003,7 +1132,6 @@ def save_cluster(user):
             cluster_map[label] = []
         cluster_map[label].append(c['video'])
     
-    # now creating cluster objects and assigning videos to them
     for label, videos in cluster_map.items():
         avg_views = sum(v.views for v in videos) / len(videos)
         avg_engagement = sum(
@@ -1018,13 +1146,19 @@ def save_cluster(user):
             avg_engagement=round(avg_engagement, 2),
         )
 
+        # Name the cluster with GPT
+        video_titles = [v.title for v in videos]
+        cluster.cluster_name = name_cluster(video_titles)
+        cluster.save()
+
         for video in videos:
             video.cluster = cluster
             video.save()
 ```
+
 ### Retrieving Clusters View (Backend)
 
-Returns all topic clusters for the authenticated user with their nested videos. Uses `TopicClusterSerializer` with a nested `VideoSerializer` so each cluster includes its full list of assigned videos. Currently used behind-the-scenes — will power AI recommendations in a future phase.
+Returns all topic clusters for the authenticated user with their nested videos. Uses `TopicClusterSerializer` with a nested `VideoSerializer` so each cluster includes its full list of assigned videos.
 
 ```python
 @api_view(['GET'])
@@ -1040,6 +1174,100 @@ def get_clusters(request):
     return Response({
         'clusters': TopicClusterSerializer(clusters, many=True).data,
     })
+```
+
+### Video Insights View (Backend)
+
+Analyzes a single video's performance using GPT-4o-mini. Gathers the video's stats, its comment sentiment breakdown, and the user's average views for comparison. Formats the data into the `VIDEO_INSIGHTS_PROMPT` and returns GPT's structured analysis.
+
+```python
+@api_view(['POST'])
+@require_supabase_auth
+def video_insights(request, id):
+    try:
+        user = User.objects.get(email=request.user_payload['email'])
+    except User.DoesNotExist:
+        return Response({'error': 'User not found'}, status=404)
+
+    try:
+        video = Video.objects.get(id=id, user=user)
+    except Video.DoesNotExist:
+        return Response({'error': 'Video not found'}, status=404)
+
+    comments = Comment.objects.filter(video=video)
+    total = comments.count()
+
+    if total > 0:
+        positive = comments.filter(sentiment_label='positive').count()
+        neutral = comments.filter(sentiment_label='neutral').count()
+        negative = comments.filter(sentiment_label='negative').count()
+        avg_score = comments.aggregate(Avg('sentiment_score'))['sentiment_score__avg'] or 0
+    else:
+        positive, neutral, negative, avg_score = 0, 0, 0, 0
+
+    avg_views = Video.objects.filter(user=user).aggregate(Avg('views'))['views__avg'] or 0
+
+    prompt = VIDEO_INSIGHTS_PROMPT.format(
+        title=video.title,
+        description=video.description or '',
+        views=video.views,
+        likes=video.likes,
+        comments_count=video.comments_count,
+        sentiment_score=round(avg_score, 4),
+        positive_percent=round((positive / total) * 100, 2) if total > 0 else 0,
+        neutral_percent=round((neutral / total) * 100, 2) if total > 0 else 0,
+        negative_percent=round((negative / total) * 100, 2) if total > 0 else 0,
+        avg_views=round(avg_views),
+    )
+
+    result = ai_generate(prompt)
+    return Response(result)
+```
+
+### Channel Recommendations View (Backend)
+
+Generates channel-wide content strategy using GPT-4o-mini. Gathers all cluster data (names, video titles, performance stats), identifies best and worst performing topics, and asks GPT for a channel analysis, top tip, and 5 specific content ideas with reasoning.
+
+```python
+@api_view(['POST'])
+@require_supabase_auth
+def channel_recommendation(request):
+    try:
+        user = User.objects.get(email=request.user_payload['email'])
+    except User.DoesNotExist:
+        return Response({'error': 'User not found'}, status=404)
+
+    clusters = TopicCluster.objects.filter(user=user)
+    if not clusters.exists():
+        return Response({'error': 'No clusters found. Please sync videos first.'}, status=404)
+
+    cluster_data = ""
+    for cluster in clusters:
+        titles = [v.title for v in cluster.videos.all()]
+        cluster_data += f"\n{cluster.cluster_name or f'Cluster {cluster.cluster_label}'}:\n"
+        cluster_data += "\n".join(f"  - {t}" for t in titles)
+        cluster_data += "\n"
+
+    best_cluster = clusters.order_by('-avg_views').first()
+    worst_cluster = clusters.order_by('avg_views').first()
+
+    sentiment = get_sentiment_stats(user)
+    total_videos = Video.objects.filter(user=user).count()
+
+    prompt = RECOMMENDATIONS_PROMPT.format(
+        cluster_data=cluster_data,
+        best_cluster_name=best_cluster.cluster_name or f'Cluster {best_cluster.cluster_label}',
+        best_cluster_views=round(best_cluster.avg_views),
+        best_cluster_engagement=round(best_cluster.avg_engagement * 100, 2),
+        worst_cluster_name=worst_cluster.cluster_name or f'Cluster {worst_cluster.cluster_label}',
+        worst_cluster_views=round(worst_cluster.avg_views),
+        worst_cluster_engagement=round(worst_cluster.avg_engagement * 100, 2),
+        total_videos=total_videos,
+        avg_sentiment=sentiment['avg_score'] if sentiment else 0,
+    )
+
+    result = ai_generate(prompt)
+    return Response(result)
 ```
 
 ### Public Research View (Backend)
@@ -1115,9 +1343,10 @@ urtube/
 │   │   └── wsgi.py
 │   ├── backtube1/
 │   │   ├── models.py        # User, Video, Comment, AnalysisSnapshot, TopicCluster, ResearchCache
-│   │   ├── views.py         # API views (sync, fetch, analytics, public research)
-│   │   ├── services.py      # YouTube API, VADER sentiment, OpenAI embeddings, K-means clustering
-│   │   ├── serializers.py   # DRF serializers (User, Video, Comment, TopicCluster)
+│   │   ├── views.py         # API views (sync, fetch, analytics, AI insights, public research)
+│   │   ├── services.py      # YouTube API, VADER sentiment, OpenAI embeddings, K-means, GPT helpers
+│   │   ├── prompts.py       # GPT prompt templates (cluster naming, video insights, recommendations)
+│   │   ├── serializers.py   # DRF serializers (User, Video, Comment, TopicCluster, AnalysisSnapshot)
 │   │   ├── decorators.py    # JWT auth decorator
 │   │   └── urls.py
 │   ├── manage.py
@@ -1128,7 +1357,7 @@ urtube/
 │   ├── app/
 │   │   ├── page.tsx         # Home page (login/logout)
 │   │   ├── dashboard/
-│   │   │   └── page.tsx     # Creator dashboard (videos, sentiment, re-analyze)
+│   │   │   └── page.tsx     # Creator dashboard (videos, clusters, sentiment, AI insights, recommendations)
 │   │   ├── publicmode/
 │   │   │   └── page.tsx     # Public research page (search bar, results)
 │   │   └── auth/
