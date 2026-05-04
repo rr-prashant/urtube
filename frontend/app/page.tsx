@@ -251,10 +251,21 @@ export default function Home() {
               <p style={{ color: 'var(--muted)', fontSize: '15px', lineHeight: 1.75, maxWidth: 360 }}>Connect your YouTube account to unlock full analytics, comment sentiment, topic gap analysis, and AI-powered content ideas.</p>
             </div>
             <div style={{ position: 'relative', zIndex: 1, flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
-              <button onClick={handleLogin} style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '15px 30px', borderRadius: 12, background: 'var(--accent)', border: 'none', color: '#fff', fontFamily: 'var(--font-body)', fontWeight: 700, fontSize: '15px', cursor: 'pointer', boxShadow: '0 4px 20px rgba(192,57,43,0.4)', transition: 'all 0.18s ease' }}>
-                <GoogleIcon size={18} /> Get Started — it&apos;s free
-              </button>
-              <div style={{ color: 'var(--muted)', fontSize: '12px' }}>No credit card required</div>
+              {user ? (
+                <>
+                  <Link href="/dashboard" style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '15px 30px', borderRadius: 12, background: 'var(--accent)', border: 'none', color: '#fff', fontFamily: 'var(--font-body)', fontWeight: 700, fontSize: '15px', textDecoration: 'none', boxShadow: '0 4px 20px rgba(192,57,43,0.4)', transition: 'all 0.18s ease' }}>
+                    <UserIcon /> Go to Dashboard
+                  </Link>
+                  <div style={{ color: 'var(--muted)', fontSize: '12px' }}>You&apos;re all set</div>
+                </>
+              ) : (
+                <>
+                  <button onClick={handleLogin} style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '15px 30px', borderRadius: 12, background: 'var(--accent)', border: 'none', color: '#fff', fontFamily: 'var(--font-body)', fontWeight: 700, fontSize: '15px', cursor: 'pointer', boxShadow: '0 4px 20px rgba(192,57,43,0.4)', transition: 'all 0.18s ease' }}>
+                    <GoogleIcon size={18} /> Get Started — it&apos;s free
+                  </button>
+                  <div style={{ color: 'var(--muted)', fontSize: '12px' }}>No credit card required</div>
+                </>
+              )}
             </div>
           </div>
         </section>
