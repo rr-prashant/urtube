@@ -1,104 +1,40 @@
-// 'use client'
-
-// import { useEffect, useState } from 'react'
-// import { createClient } from '@/lib/supabase/client'
-// import Link from 'next/link'
-// import { useRouter, useSearchParams } from 'next/navigation'
-
-// export default function Home() {
-//   const [user, setUser] = useState<any>(null)
-//   const [loading, setLoading] = useState(true)
-//   const router = useRouter()
-//   const searchParams = useSearchParams()
-
-//   useEffect(() => {
-//     // Clear error params from URL if present
-//     const error = searchParams.get('error')
-//     if (error) {
-//       router.replace('/', { scroll: false })
-//     }
-
-//     async function getUser() {
-//       const supabase = createClient()
-//       const { data: { user } } = await supabase.auth.getUser()
-//       setUser(user)
-//       setLoading(false)
-//     }
-//     getUser()
-//   }, [searchParams, router])
-
-//   async function signIn() {
-//     const supabase = createClient()
-//     await supabase.auth.signInWithOAuth({
-//       provider: 'google',
-//       options: {
-//         redirectTo: `${window.location.origin}/auth/callback`,
-//         scopes: 'https://www.googleapis.com/auth/youtube.readonly',
-//         queryParams: {
-//           prompt: 'select_account',
-//         },
-//       },
-//     })
-//   }
-
-//   async function signOut() {
-//     const supabase = createClient()
-//     await supabase.auth.signOut()
-
-//     // Clear all Supabase cookies
-//     document.cookie.split(';').forEach(cookie => {
-//       const name = cookie.split('=')[0].trim()
-//       if (name.startsWith('sb-')) {
-//         document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`
-//       }
-//     })
-//     setUser(null)
-//     router.refresh()
-//   }
-
-//   if (loading) return <p>Loading...</p>
-
-//   return (
-//     <div style={{ padding: '20px' }}>
-//       <nav style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-//         <div>
-//           {user && <span>Welcome {user.user_metadata?.full_name || user.email}</span>}
-//         </div>
-//         <div style={{ display: 'flex', gap: '10px' }}>
-//           {user ? (
-//             <>
-//               <Link href="/dashboard">
-//                 <button type="button">Dashboard</button>
-//               </Link>
-//               <button onClick={signOut}>Log out</button>
-//             </>
-//           ) : (
-//             <button onClick={signIn}>Log in with Google</button>
-//           )}
-//           <Link href="/publicmode">
-//                 <button type="button">Public Mode</button>
-//           </Link>
-//         </div>
-//       </nav>
-//     </div>
-//   )
-// }
-
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { BgDecoration, Footer, GlassBtn, GoogleIcon, SparkleIcon, ArrowRightIcon } from '../components/ui'
-// TODO: import { createClient } from '@/lib/supabase/client'
+import { createClient } from '@/lib/supabase/client'
+import { BgDecoration, Footer, GlassBtn, GoogleIcon, SparkleIcon, ArrowRightIcon, GlobeIcon, UserIcon, LogoutIcon } from '../components/ui'
 
 export default function Home() {
+  const [user, setUser] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+  const [dropdownOpen, setDropdownOpen] = useState(false)
+  const dropRef = useRef<HTMLDivElement>(null)
+
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', 'dark')
+
+    async function getUser() {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      setUser(user)
+      setLoading(false)
+    }
+    getUser()
   }, [])
 
-  /* TODO: Connect Google OAuth */
-  const handleLogin = async () => {
-    /*
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (dropRef.current && !dropRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
+
+  async function handleLogin() {
     const supabase = createClient()
     await supabase.auth.signInWithOAuth({
       provider: 'google',
@@ -108,8 +44,19 @@ export default function Home() {
         queryParams: { prompt: 'consent', access_type: 'offline' },
       },
     })
-    */
-    console.log('Login clicked — connect OAuth here')
+  }
+
+  async function handleLogout() {
+    const supabase = createClient()
+    await supabase.auth.signOut()
+    document.cookie.split(';').forEach(cookie => {
+      const name = cookie.split('=')[0].trim()
+      if (name.startsWith('sb-')) {
+        document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`
+      }
+    })
+    setUser(null)
+    setDropdownOpen(false)
   }
 
   return (
@@ -119,7 +66,6 @@ export default function Home() {
       {/* ── HEADER ── */}
       <header style={{ border: 'none', background: 'transparent', position: 'relative', zIndex: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', maxWidth: 1320, margin: '0 auto', width: '100%', padding: '0 clamp(20px, 4vw, 60px)', height: '62px' }}>
-          {/* TODO: Replace with your logo image */}
           <Link href="/">
             <img
               src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%23c0392b'/%3E%3Cpolygon points='9,6 9,18 19,12' fill='white'/%3E%3C/svg%3E"
@@ -127,9 +73,80 @@ export default function Home() {
               style={{ width: 30, height: 30, objectFit: 'contain', borderRadius: 4 }}
             />
           </Link>
-          <GlassBtn onClick={handleLogin} title="Sign in with Google" style={{ padding: '0 10px', minWidth: 36, justifyContent: 'center' }}>
-            <GoogleIcon size={16} />
-          </GlassBtn>
+
+          {!loading && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              {!user ? (
+                <GlassBtn onClick={handleLogin} title="Sign in with Google" style={{ padding: '0 10px', minWidth: 36, justifyContent: 'center' }}>
+                  <GoogleIcon size={16} />
+                </GlassBtn>
+              ) : (
+                <div style={{ position: 'relative' }} ref={dropRef}>
+                  <button
+                    onClick={() => setDropdownOpen(o => !o)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 8,
+                      padding: '0 14px', height: 36, borderRadius: 10,
+                      border: '1px solid var(--border2)',
+                      background: dropdownOpen ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.22)',
+                      backdropFilter: 'blur(12px)',
+                      color: 'var(--text)', cursor: 'pointer',
+                      fontFamily: 'var(--font-body)', fontWeight: 500, fontSize: '13.5px',
+                      transition: 'all 0.18s ease',
+                      boxShadow: '0 1px 4px rgba(0,0,0,0.05), inset 0 1px 0 rgba(255,255,255,0.5)',
+                    }}>
+                    {user.user_metadata?.picture ? (
+                      <img src={user.user_metadata.picture} alt="" style={{ width: 22, height: 22, borderRadius: '50%' }} />
+                    ) : (
+                      <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'var(--accent)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: 700 }}>
+                        {user.user_metadata?.full_name?.[0] || 'U'}
+                      </div>
+                    )}
+                    {user.user_metadata?.full_name?.split(' ')[0] || 'Account'}
+                    <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"
+                      style={{ transform: dropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}>
+                      <polyline points="6 9 12 15 18 9" />
+                    </svg>
+                  </button>
+
+                  {dropdownOpen && (
+                    <div className="user-dropdown" style={{
+                      position: 'absolute', top: 'calc(100% + 8px)', right: 0, minWidth: 190,
+                      background: 'var(--bg2)', border: '1px solid var(--border2)',
+                      borderRadius: 14, padding: '6px', boxShadow: 'var(--shadow-lg)', zIndex: 100,
+                    }}>
+                      {[
+                        { icon: <GlobeIcon />, label: 'Public Mode', href: '/publicmode' },
+                        { icon: <UserIcon />, label: 'My Channel', href: '/dashboard' },
+                      ].map(({ icon, label, href }) => (
+                        <Link key={label} href={href} onClick={() => setDropdownOpen(false)} style={{
+                          display: 'flex', alignItems: 'center', gap: 10,
+                          width: '100%', padding: '10px 12px', borderRadius: 9,
+                          background: 'transparent', color: 'var(--text)',
+                          textDecoration: 'none', fontSize: '14px', fontWeight: 500,
+                          transition: 'background 0.14s',
+                        }}>
+                          <span style={{ color: 'var(--muted)' }}>{icon}</span>
+                          {label}
+                        </Link>
+                      ))}
+                      <button onClick={handleLogout} style={{
+                        display: 'flex', alignItems: 'center', gap: 10,
+                        width: '100%', padding: '10px 12px', borderRadius: 9,
+                        border: 'none', background: 'transparent',
+                        color: 'var(--accent)', cursor: 'pointer',
+                        fontFamily: 'var(--font-body)', fontSize: '14px', fontWeight: 500,
+                        textAlign: 'left', transition: 'background 0.14s',
+                      }}>
+                        <span style={{ color: 'var(--accent)' }}><LogoutIcon /></span>
+                        Logout
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </header>
 
@@ -206,7 +223,6 @@ export default function Home() {
                   <div style={{ color: 'var(--muted)', fontSize: '14px', lineHeight: 1.7, position: 'relative', zIndex: 1 }}>{desc}</div>
                   <div style={{ position: 'absolute', bottom: 16, right: 20, fontFamily: 'var(--font-head)', fontWeight: 800, fontSize: '72px', lineHeight: 1, color: 'var(--border)', pointerEvents: 'none', userSelect: 'none' }}>{num}</div>
                 </div>
-                {/* Arrow between steps */}
                 {i < 2 && (
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 0, position: 'relative', zIndex: 2 }}>
                     <div style={{ position: 'absolute', width: 32, height: 32, borderRadius: '50%', background: 'var(--bg)', border: '1px solid var(--border2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent)' }}>
