@@ -370,7 +370,7 @@ export default function PublicMode() {
             {/* All Videos */}
             <div>
               <div style={{ fontFamily: 'var(--font-head)', fontWeight: 600, fontSize: '17px', color: 'var(--text)', marginBottom: 14 }}>
-                All Videos <span style={{ color: 'var(--muted)', fontWeight: 400, fontSize: '14px', marginLeft: 8 }}>({results.total_videos})</span>
+                All Videos 
               </div>
               <div className="video-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: '14px' }}>
                 {results.videos.map((v, i) => (

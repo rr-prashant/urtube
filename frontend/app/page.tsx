@@ -260,9 +260,9 @@ export default function Home() {
                 </>
               ) : (
                 <>
-                  <button onClick={handleLogin} style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '15px 30px', borderRadius: 12, background: 'var(--accent)', border: 'none', color: '#fff', fontFamily: 'var(--font-body)', fontWeight: 700, fontSize: '15px', cursor: 'pointer', boxShadow: '0 4px 20px rgba(192,57,43,0.4)', transition: 'all 0.18s ease' }}>
+                  <GlassBtn onClick={handleLogin} style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '25px 30px', borderRadius: 12, color: '#fff', fontFamily: 'var(--font-body)', fontWeight: 700, fontSize: '15px', cursor: 'pointer'}}>
                     <GoogleIcon size={18} /> Get Started — it&apos;s free
-                  </button>
+                  </GlassBtn>
                   <div style={{ color: 'var(--muted)', fontSize: '12px' }}>No credit card required</div>
                 </>
               )}

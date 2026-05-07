@@ -142,11 +142,9 @@ export function Footer() {
   return (
     <footer style={{ position: 'relative', zIndex: 1, borderTop: '1px solid var(--border)', padding: '20px 40px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: 'var(--bg2)', transition: 'background 0.3s ease' }}>
       {/* TODO: Replace with your name */}
-      <span style={{ color: 'var(--muted)', fontSize: '13px' }}>Built by <span style={{ color: 'var(--text)', fontWeight: 500 }}>Your Name</span></span>
+      <span style={{ color: 'var(--muted)', fontSize: '13px' }}>Built by <span style={{ color: 'var(--text)', fontWeight: 500 }}>Prashant Rai</span></span>
       <span style={{ color: 'var(--border2)' }}>·</span>
-      <span style={{ color: 'var(--muted)', fontSize: '13px' }}>CS Master&apos;s Project</span>
-      <span style={{ color: 'var(--border2)' }}>·</span>
-      <span style={{ color: 'var(--muted)', fontSize: '13px' }}>2025</span>
+      <span style={{ color: 'var(--muted)', fontSize: '13px' }}>Project 2025</span>
     </footer>
   )
 }
