@@ -296,7 +296,7 @@ function AIRecommendations({ session }: { session: any }) {
             <div style={{ width: 32, height: 32, borderRadius: 9, background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}><SparkleIcon /></div>
             <h2 style={{ fontFamily: 'var(--font-head)', fontWeight: 700, fontSize: '20px', letterSpacing: '-0.3px' }}>AI Recommendations</h2>
           </div>
-          <p style={{ color: 'var(--muted)', fontSize: '13.5px', maxWidth: 400, lineHeight: 1.6 }}>GPT-4o analyzes your channel&apos;s performance data and generates personalized content strategy.</p>
+          <p style={{ color: 'var(--muted)', fontSize: '13.5px', maxWidth: 400, lineHeight: 1.6 }}>AI analyzes your channel&apos;s performance data and generates personalized content strategy.</p>
         </div>
         <button onClick={loadRecs} disabled={status === 'loading'} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '11px 22px', borderRadius: 11, background: status === 'loading' ? 'rgba(192,57,43,0.5)' : 'var(--accent)', border: 'none', color: '#fff', fontFamily: 'var(--font-body)', fontWeight: 700, fontSize: '14px', cursor: status === 'loading' ? 'default' : 'pointer', boxShadow: status !== 'loading' ? '0 4px 20px rgba(192,57,43,0.4)' : 'none', transition: 'all 0.18s ease', flexShrink: 0 }}>
           {status === 'loading' ? <Spinner size={15} /> : <SparkleIcon />}
@@ -647,7 +647,11 @@ export default function Dashboard() {
           <TopVideos videos={bestVideos} />
           {sentiment && (
             <div>
+              
               <SectionHeading label="Audience" title="Sentiment Overview" sub={`${fmt(sentiment.total_comments)} comments`} />
+                <p style={{ color: 'var(--muted)', fontSize: '13px', lineHeight: 1.6, marginTop: -12, marginBottom: 16 }}>
+                  How your audience feels based on VADER analysis of comments across all your videos. Positive means supportive/enthusiastic, neutral means informational/factual, negative means critical/disappointed.
+                </p>
               <SentimentDonut sentiment={sentiment} />
             </div>
           )}
@@ -677,7 +681,7 @@ export default function Dashboard() {
 
         {/* AI Recommendations */}
         <div>
-          <SectionHeading label="Growth" title="AI Recommendations" sub="powered by GPT-4o" />
+          <SectionHeading label="Growth" title="AI Recommendations" />
           <AIRecommendations session={session} />
         </div>
 
