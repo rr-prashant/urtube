@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { BgDecoration, Footer, StatCard, SparkleIcon, GlobeIcon, LogoutIcon, EyeIcon, HeartIcon, CommentIcon, TrendIcon, fmt, timeAgo } from '@/components/ui'
+import { PieChart, Pie, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid} from 'recharts'
 
 /* ─── Types ─── */
 interface Video {
@@ -87,52 +88,39 @@ function SectionHeading({ label, title, sub }: { label?: string; title: string; 
 
 /* ─── Sentiment Donut ─── */
 function SentimentDonut({ sentiment }: { sentiment: Sentiment }) {
-  const { positive_percent: pos, neutral_percent: neu, negative_percent: neg, avg_score } = sentiment
-  const R = 56, STROKE = 13, circ = 2 * Math.PI * R, GAP = 3
-  let offset = 0
-  const segments = [
-    { pct: pos, color: 'var(--pos)', label: 'Positive' },
-    { pct: neu, color: 'var(--neu)', label: 'Neutral' },
-    { pct: neg, color: 'var(--neg)', label: 'Negative' },
-  ].map(seg => {
-    const len = circ * (seg.pct / 100)
-    const dash = { dashArray: `${len - GAP} ${circ - (len - GAP)}`, dashOffset: -offset }
-    offset += len
-    return { ...seg, ...dash }
-  })
+  const data = [
+    { name: 'Positive', value: sentiment.positive_percent, fill: 'oklch(0.62 0.14 155)' },
+    { name: 'Neutral', value: sentiment.neutral_percent, fill: '#4a4f66' },
+    { name: 'Negative', value: sentiment.negative_percent, fill: 'oklch(0.55 0.2 22)' },
+  ]
 
   return (
     <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 16, padding: '28px 32px', boxShadow: 'var(--shadow-sm)', display: 'flex', alignItems: 'center', gap: 40 }}>
-      <div style={{ flexShrink: 0 }}>
-        <svg width={150} height={150} viewBox="0 0 150 150">
-          <circle cx="75" cy="75" r={R} fill="none" stroke="var(--bg3)" strokeWidth={STROKE} />
-          {segments.map((seg, i) => (
-            <circle key={i} cx="75" cy="75" r={R} fill="none" stroke={seg.color} strokeWidth={STROKE}
-              strokeDasharray={seg.dashArray} strokeDashoffset={seg.dashOffset} strokeLinecap="butt"
-              style={{ transform: 'rotate(-90deg)', transformOrigin: '75px 75px' }} />
-          ))}
-          <text x="75" y="70" textAnchor="middle" style={{ fontFamily: 'var(--font-head)', fontWeight: 700, fontSize: 20, fill: 'var(--text)' }}>
-            {avg_score > 0 ? '+' : ''}{avg_score.toFixed(2)}
-          </text>
-          <text x="75" y="88" textAnchor="middle" style={{ fontFamily: 'var(--font-body)', fontSize: 11, fill: 'var(--muted)' }}>avg score</text>
-        </svg>
+      <div style={{ width: 150, height: 150, position: 'relative' }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie data={data} cx="50%" cy="50%" innerRadius={43} outerRadius={56} dataKey="value" strokeWidth={0} />
+          </PieChart>
+        </ResponsiveContainer>
+        <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', textAlign: 'center' }}>
+          <div style={{ fontFamily: 'var(--font-head)', fontWeight: 700, fontSize: '20px', color: 'var(--text)' }}>
+            {sentiment.avg_score > 0 ? '+' : ''}{sentiment.avg_score.toFixed(2)}
+          </div>
+          <div style={{ fontSize: '11px', color: 'var(--muted)' }}>avg score</div>
+        </div>
       </div>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 14 }}>
-        {[
-          { label: 'Positive', pct: pos, color: 'var(--pos)' },
-          { label: 'Neutral', pct: neu, color: 'var(--neu)' },
-          { label: 'Negative', pct: neg, color: 'var(--neg)' },
-        ].map(({ label, pct, color }) => (
-          <div key={label}>
+        {data.map(({ name, value, fill }) => (
+          <div key={name}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <div style={{ width: 10, height: 10, borderRadius: '50%', background: color }} />
-                <span style={{ fontSize: '13.5px', color: 'var(--text2)', fontWeight: 500 }}>{label}</span>
+                <div style={{ width: 10, height: 10, borderRadius: '50%', background: fill }} />
+                <span style={{ fontSize: '13.5px', color: 'var(--text2)', fontWeight: 500 }}>{name}</span>
               </div>
-              <span style={{ fontFamily: 'var(--font-head)', fontWeight: 700, fontSize: '14px', color: 'var(--text)' }}>{pct}%</span>
+              <span style={{ fontFamily: 'var(--font-head)', fontWeight: 700, fontSize: '14px', color: 'var(--text)' }}>{value}%</span>
             </div>
             <div style={{ height: 5, background: 'var(--bg3)', borderRadius: 3, overflow: 'hidden' }}>
-              <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: 3, transition: 'width 0.8s cubic-bezier(.22,1,.36,1)' }} />
+              <div style={{ height: '100%', width: `${value}%`, background: fill, borderRadius: 3 }} />
             </div>
           </div>
         ))}
@@ -356,6 +344,7 @@ function AIRecommendations({ session }: { session: any }) {
   )
 }
 
+
 /* ─── Previous Analyses ─── */
 function PreviousAnalyses({ snapshots }: { snapshots: Snapshot[] }) {
   const [expanded, setExpanded] = useState(false)
@@ -363,7 +352,7 @@ function PreviousAnalyses({ snapshots }: { snapshots: Snapshot[] }) {
 
   return (
     <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden', boxShadow: 'var(--shadow-sm)' }}>
-      <button onClick={() => setExpanded(e => !e)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', padding: '18px 24px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text)', transition: 'background 0.15s ease' }}>
+      <button onClick={() => setExpanded(e => !e)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', padding: '18px 24px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <span style={{ fontFamily: 'var(--font-head)', fontWeight: 600, fontSize: '15px' }}>Analysis History</span>
           {snapshots.length > 0 && (
@@ -377,31 +366,56 @@ function PreviousAnalyses({ snapshots }: { snapshots: Snapshot[] }) {
           {snapshots.length === 0 ? (
             <div style={{ padding: '32px 24px', textAlign: 'center', color: 'var(--muted)', fontSize: '14px' }}>No previous analyses yet. Re-analyze to start tracking changes.</div>
           ) : (
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13.5px' }}>
-                <thead>
-                  <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                    {['#', 'Date', 'Positive %', 'Neutral %', 'Negative %', 'Avg Score', 'Comments', 'Top Video'].map((col, i) => (
-                      <th key={col} style={{ padding: '10px 16px', textAlign: i < 2 ? 'left' : 'center', color: 'var(--muted)', fontWeight: 600, fontSize: '11px', letterSpacing: '0.07em', textTransform: 'uppercase', background: 'var(--bg3)', whiteSpace: 'nowrap' }}>{col}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {reversed.map((row, i) => (
-                    <tr key={i} className="history-table-row" style={{ borderBottom: i < reversed.length - 1 ? '1px solid var(--border)' : 'none', background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)' }}>
-                      <td style={{ padding: '12px 16px', color: 'var(--muted)', fontFamily: 'var(--font-head)', fontWeight: 700, fontSize: '13px' }}>{i + 1}</td>
-                      <td style={{ padding: '12px 16px', color: 'var(--text2)', whiteSpace: 'nowrap' }}>{new Date(row.created_at).toLocaleDateString()}</td>
-                      <td style={{ padding: '12px 16px', textAlign: 'center', color: 'var(--pos)', fontWeight: 600, fontFamily: 'var(--font-head)' }}>{row.positive_percent}%</td>
-                      <td style={{ padding: '12px 16px', textAlign: 'center', color: 'var(--muted)', fontWeight: 600, fontFamily: 'var(--font-head)' }}>{row.neutral_percent}%</td>
-                      <td style={{ padding: '12px 16px', textAlign: 'center', color: 'var(--neg)', fontWeight: 600, fontFamily: 'var(--font-head)' }}>{row.negative_percent}%</td>
-                      <td style={{ padding: '12px 16px', textAlign: 'center', fontFamily: 'var(--font-head)', fontWeight: 700, color: 'var(--text)' }}>{row.avg_sentiment > 0 ? '+' : ''}{row.avg_sentiment.toFixed(2)}</td>
-                      <td style={{ padding: '12px 16px', textAlign: 'center', color: 'var(--text2)' }}>{fmt(row.total_comments)}</td>
-                      <td style={{ padding: '12px 16px', color: 'var(--text2)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.top_video_title || '-'}</td>
+            <>
+              {/* Chart */}
+              {snapshots.length >= 2 && (
+                <div style={{ padding: '24px 28px', borderBottom: '1px solid var(--border)' }}>
+                  <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--muted)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 16 }}>Sentiment Trend</div>
+                  <ResponsiveContainer width="100%" height={220}>
+                    <LineChart data={reversed.map(s => ({
+                      name: new Date(s.created_at).toLocaleDateString(),
+                      positive: s.positive_percent,
+                      neutral: s.neutral_percent,
+                      negative: s.negative_percent,
+                    }))}>
+                      <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" />
+                      <XAxis dataKey="name" tick={{ fill: 'var(--muted)', fontSize: 11 }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fill: 'var(--muted)', fontSize: 11 }} axisLine={false} tickLine={false} domain={[0, 100]} unit="%" />
+                      <Tooltip contentStyle={{ background: 'var(--bg3)', border: '1px solid var(--border2)', borderRadius: 10, fontSize: '13px' }} />
+                      <Line type="monotone" dataKey="positive" stroke="oklch(0.62 0.14 155)" strokeWidth={2} dot={{ r: 4 }} name="Positive" />
+                      <Line type="monotone" dataKey="neutral" stroke="#4a4f66" strokeWidth={2} dot={{ r: 4 }} name="Neutral" />
+                      <Line type="monotone" dataKey="negative" stroke="oklch(0.55 0.2 22)" strokeWidth={2} dot={{ r: 4 }} name="Negative" />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+              {/* Table */}
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13.5px' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                      {['#', 'Date', 'Positive %', 'Neutral %', 'Negative %', 'Avg Score', 'Comments', 'Top Video'].map((col, i) => (
+                        <th key={col} style={{ padding: '10px 16px', textAlign: i < 2 ? 'left' : 'center', color: 'var(--muted)', fontWeight: 600, fontSize: '11px', letterSpacing: '0.07em', textTransform: 'uppercase', background: 'var(--bg3)', whiteSpace: 'nowrap' }}>{col}</th>
+                      ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {reversed.map((row, i) => (
+                      <tr key={i} className="history-table-row" style={{ borderBottom: i < reversed.length - 1 ? '1px solid var(--border)' : 'none', background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)' }}>
+                        <td style={{ padding: '12px 16px', color: 'var(--muted)', fontFamily: 'var(--font-head)', fontWeight: 700, fontSize: '13px' }}>{i + 1}</td>
+                        <td style={{ padding: '12px 16px', color: 'var(--text2)', whiteSpace: 'nowrap' }}>{new Date(row.created_at).toLocaleDateString()}</td>
+                        <td style={{ padding: '12px 16px', textAlign: 'center', color: 'var(--pos)', fontWeight: 600, fontFamily: 'var(--font-head)' }}>{row.positive_percent}%</td>
+                        <td style={{ padding: '12px 16px', textAlign: 'center', color: 'var(--muted)', fontWeight: 600, fontFamily: 'var(--font-head)' }}>{row.neutral_percent}%</td>
+                        <td style={{ padding: '12px 16px', textAlign: 'center', color: 'var(--neg)', fontWeight: 600, fontFamily: 'var(--font-head)' }}>{row.negative_percent}%</td>
+                        <td style={{ padding: '12px 16px', textAlign: 'center', fontFamily: 'var(--font-head)', fontWeight: 700, color: 'var(--text)' }}>{row.avg_sentiment > 0 ? '+' : ''}{row.avg_sentiment.toFixed(2)}</td>
+                        <td style={{ padding: '12px 16px', textAlign: 'center', color: 'var(--text2)' }}>{fmt(row.total_comments)}</td>
+                        <td style={{ padding: '12px 16px', color: 'var(--text2)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.top_video_title || '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </div>
       )}
