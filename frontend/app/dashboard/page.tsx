@@ -626,7 +626,7 @@ export default function Dashboard() {
               Welcome back, <span style={{ color: 'var(--accent)' }}>{user?.first_name || 'Creator'}</span>
             </h1>
             <p style={{ color: 'var(--text2)', fontSize: '14px', marginTop: 6 }}>
-              {videos.length} videos · {sentiment?.total_comments || 0} comments analyzed
+              {videos.length} videos analyzed
             </p>
           </div>
           <button onClick={handleReanalyze} disabled={reanalyzing} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 26px', borderRadius: 12, background: reanalyzing ? 'rgba(192,57,43,0.6)' : 'var(--accent)', border: 'none', color: '#fff', fontFamily: 'var(--font-body)', fontWeight: 700, fontSize: '14px', cursor: reanalyzing ? 'default' : 'pointer', boxShadow: reanalyzing ? 'none' : '0 4px 20px rgba(192,57,43,0.45)', transition: 'all 0.18s ease', flexShrink: 0 }}>
