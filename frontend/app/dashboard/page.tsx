@@ -327,7 +327,7 @@ function AIRecommendations({ session }: { session: any }) {
           <div>
             <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--muted)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 12 }}>5 Content Ideas</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 10 }}>
-              {recs.recommendations.map((idea, i) => (
+              {(recs?.recommendations || []).map((idea, i) => (
                 <div key={i} style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 12, padding: '14px 16px', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
                   <div style={{ width: 24, height: 24, borderRadius: 6, flexShrink: 0, background: 'rgba(192,57,43,0.15)', border: '1px solid rgba(192,57,43,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-head)', fontWeight: 700, fontSize: '11px', color: 'var(--accent)', marginTop: 1 }}>{i + 1}</div>
                   <div>
