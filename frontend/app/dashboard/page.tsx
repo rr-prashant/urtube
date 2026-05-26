@@ -470,7 +470,7 @@ export default function Dashboard() {
       const { data: { user: authUser } } = await supabase.auth.getUser()
 
       // Sync user
-      await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/sync-user/`, {
+      const syncRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/sync-user/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${s.access_token}` },
         body: JSON.stringify({
@@ -483,12 +483,7 @@ export default function Dashboard() {
         })
       })
 
-      // Fetch videos + comments on first analysis
-      const syncRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/sync-user/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${s.access_token}` },
-        body: JSON.stringify({ sub: authUser?.user_metadata.sub, email: authUser?.email, full_name: authUser?.user_metadata.full_name, picture: authUser?.user_metadata.picture, email_verified: authUser?.user_metadata.email_verified, google_access_token: s.provider_token })
-      })
+      
       const syncData = await syncRes.json()
 
       if (!syncData.is_analyzed) {
