@@ -4,6 +4,9 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "urtube",
+  icons: {
+    icon: '/logo.png',
+  },
   description: "AI Analyser for YouTube profiles",
 };
 
