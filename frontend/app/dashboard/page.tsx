@@ -592,7 +592,13 @@ export default function Dashboard() {
       <header style={{ position: 'sticky', top: 0, zIndex: 50, background: 'rgba(12,14,20,0.88)', backdropFilter: 'blur(20px)', borderBottom: '1px solid var(--border)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', maxWidth: 1320, margin: '0 auto', width: '100%', padding: '0 clamp(20px, 4vw, 60px)', height: 62, gap: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-            <Link href="/"><img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%23c0392b'/%3E%3Cpolygon points='9,6 9,18 19,12' fill='white'/%3E%3C/svg%3E" alt="URTube" style={{ width: 28, height: 28, borderRadius: 4 }} /></Link>
+            <Link href="/">
+              <img
+                src="/logo.png"
+                alt="URTube logo"
+                style={{ width: 50, height: 40, objectFit: 'contain' }}
+              />
+            </Link>
             <div style={{ width: 1, height: 18, background: 'var(--border2)' }} />
             <span style={{ fontFamily: 'var(--font-head)', fontWeight: 600, fontSize: '16px', color: 'var(--text)' }}>Dashboard</span>
           </div>

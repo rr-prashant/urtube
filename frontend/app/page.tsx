@@ -68,9 +68,9 @@ export default function Home() {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', maxWidth: 1320, margin: '0 auto', width: '100%', padding: '0 clamp(20px, 4vw, 60px)', height: '62px' }}>
           <Link href="/">
             <img
-              src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%23c0392b'/%3E%3Cpolygon points='9,6 9,18 19,12' fill='white'/%3E%3C/svg%3E"
+              src="/logo.png"
               alt="URTube logo"
-              style={{ width: 30, height: 30, objectFit: 'contain', borderRadius: 4 }}
+              style={{ width: 50, height: 40, objectFit: 'contain' }}
             />
           </Link>
 
