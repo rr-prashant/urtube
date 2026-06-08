@@ -284,6 +284,7 @@ def public_research(request):
         'videos': videos,
         'trending_titles': [
             {
+                'youtube_video_id': v['youtube_video_id'],
                 'title': v['title'], 
                 'views': v['views'],
                 'likes': v['likes'],
