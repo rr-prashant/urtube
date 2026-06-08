@@ -95,7 +95,7 @@ function SentimentDonut({ sentiment }: { sentiment: Sentiment }) {
   ]
 
   return (
-    <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 16, padding: '28px 32px', boxShadow: 'var(--shadow-sm)', display: 'flex', alignItems: 'center', gap: 40 }}>
+    <div className='sentiment-donut-card' style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 16, padding: '28px 32px', boxShadow: 'var(--shadow-sm)', display: 'flex', alignItems: 'center', gap: 40 }}>
       <div style={{ width: 150, height: 150, position: 'relative' }}>
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
@@ -135,7 +135,7 @@ function TopVideos({ videos }: { videos: Video[] }) {
   return (
     <div>
       <SectionHeading label="Performance" title="Top Performing Videos" sub="by view count" />
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16 }}>
+      <div className='top-videos-grid' style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16 }}>
         {videos.map((video, i) => (
           <div key={video.id} className="anim-card-in top-video-card" style={{ animationDelay: `${i * 80}ms`, borderRadius: 16, overflow: 'hidden', border: i === 0 ? '1px solid rgba(192,57,43,0.35)' : '1px solid var(--border)', background: 'var(--bg2)', boxShadow: i === 0 ? '0 4px 24px rgba(192,57,43,0.15)' : 'var(--shadow-sm)' }}>
             <div style={{ height: 160, overflow: 'hidden', position: 'relative' }}>
@@ -213,7 +213,7 @@ function InsightsInlineRow({ video, onClose, session }: { video: Video; onClose:
 
   useEffect(() => {
     async function fetchInsights() {
-      /* TODO: Connect to backend */
+      /* Connect to backend */
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/videos/${video.id}/insights/`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${session?.access_token}` }
@@ -271,7 +271,7 @@ function AIRecommendations({ session }: { session: any }) {
 
   async function loadRecs() {
     setStatus('loading')
-    /* TODO: Connect to backend */
+    /* Connect to backend */
     const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/recom/`, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${session?.access_token}` }
@@ -445,8 +445,22 @@ export default function Dashboard() {
   const [dropOpen, setDropOpen] = useState(false)
   const dropRef = useRef<HTMLDivElement>(null)
 
+  // videos grid state
+  const [showAllVideos, setShowAllVideos] = useState(false)
+
+
+  // videos state
+  const [isMobile, setIsMobile] = useState(false)
+
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', 'dark')
+  }, [])
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
   }, [])
 
   useEffect(() => {
@@ -559,8 +573,9 @@ export default function Dashboard() {
     : clusters.find(c => (c.cluster_name || `Cluster ${c.cluster_label}`) === activeCluster)?.videos || []
 
   // Build grid with inline insights
+  const videosToShow = (isMobile && !showAllVideos) ? filteredVideos.slice(0, 6) : filteredVideos
   const gridItems: React.ReactNode[] = []
-  filteredVideos.forEach((v, i) => {
+  videosToShow.forEach((v, i) => {
     gridItems.push(
       <DashboardVideoCard key={v.id} video={v} delay={Math.min(i * 25, 240)} isOpen={openVideoId === v.id} onToggle={() => setOpenVideoId(openVideoId === v.id ? null : v.id)} />
     )
@@ -638,7 +653,7 @@ export default function Dashboard() {
         </div>
 
         {/* Top Videos + Sentiment side by side */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: 24, alignItems: 'start' }}>
+        <div className="top-sentiment-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: 24, alignItems: 'start' }}>
           <TopVideos videos={bestVideos} />
           {sentiment && (
             <div>
@@ -652,18 +667,19 @@ export default function Dashboard() {
           )}
         </div>
 
+
         {/* Videos by Topic */}
         <div>
           <SectionHeading label="Content Library" title="Videos by Topic" />
-          <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 4, marginBottom: 20 }}>
-            <button className="tab-btn" onClick={() => setActiveCluster('All')} style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 8, border: activeCluster === 'All' ? '1px solid var(--accent)' : '1px solid var(--border)', background: activeCluster === 'All' ? 'rgba(192,57,43,0.12)' : 'var(--bg2)', color: activeCluster === 'All' ? 'var(--accent)' : 'var(--muted)', fontFamily: 'var(--font-body)', fontWeight: activeCluster === 'All' ? 600 : 500, fontSize: '13px', cursor: 'pointer' }}>
+          <div className="cluster-tabs" style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 4, marginBottom: 20 }}>
+            <button className="tab-btn" onClick={() => { setActiveCluster('All'); setShowAllVideos(false) }} style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 8, border: activeCluster === 'All' ? '1px solid var(--accent)' : '1px solid var(--border)', background: activeCluster === 'All' ? 'rgba(192,57,43,0.12)' : 'var(--bg2)', color: activeCluster === 'All' ? 'var(--accent)' : 'var(--muted)', fontFamily: 'var(--font-body)', fontWeight: activeCluster === 'All' ? 600 : 500, fontSize: '13px', cursor: 'pointer' }}>
               All <span style={{ background: activeCluster === 'All' ? 'var(--accent)' : 'var(--bg3)', color: activeCluster === 'All' ? '#fff' : 'var(--muted)', borderRadius: 5, padding: '1px 7px', fontSize: '11px', fontWeight: 700 }}>{videos.length}</span>
             </button>
             {clusters.map(c => {
               const name = c.cluster_name || `Cluster ${c.cluster_label}`
               const active = activeCluster === name
               return (
-                <button key={c.id} className="tab-btn" onClick={() => setActiveCluster(name)} style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 8, border: active ? '1px solid var(--accent)' : '1px solid var(--border)', background: active ? 'rgba(192,57,43,0.12)' : 'var(--bg2)', color: active ? 'var(--accent)' : 'var(--muted)', fontFamily: 'var(--font-body)', fontWeight: active ? 600 : 500, fontSize: '13px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                <button key={c.id} className="tab-btn" onClick={() => { setActiveCluster(name); setShowAllVideos(false) }} style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 8, border: active ? '1px solid var(--accent)' : '1px solid var(--border)', background: active ? 'rgba(192,57,43,0.12)' : 'var(--bg2)', color: active ? 'var(--accent)' : 'var(--muted)', fontFamily: 'var(--font-body)', fontWeight: active ? 600 : 500, fontSize: '13px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
                   {name} <span style={{ background: active ? 'var(--accent)' : 'var(--bg3)', color: active ? '#fff' : 'var(--muted)', borderRadius: 5, padding: '1px 7px', fontSize: '11px', fontWeight: 700 }}>{c.videos.length}</span>
                 </button>
               )
@@ -672,6 +688,11 @@ export default function Dashboard() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 14 }}>
             {gridItems}
           </div>
+          {isMobile && filteredVideos.length > 6 && (
+            <button className="show-more-btn" onClick={() => setShowAllVideos(v => !v)} style={{ display: 'block', margin: '16px auto 0', padding: '10px 24px', borderRadius: 10, background: 'var(--bg2)', border: '1px solid var(--border)', color: 'var(--muted)', fontFamily: 'var(--font-body)', fontSize: '13px', cursor: 'pointer' }}>
+              {showAllVideos ? 'Show less' : `Show all ${filteredVideos.length} videos`}
+            </button>
+          )}
         </div>
 
         {/* AI Recommendations */}

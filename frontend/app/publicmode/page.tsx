@@ -115,7 +115,7 @@ export default function PublicMode() {
     if (!query.trim()) return
     setLoading(true)
 
-    /* TODO: Connect to backend */
+   
     const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/research/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
